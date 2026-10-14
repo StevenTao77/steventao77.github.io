@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BUNNY: 3D Stealth / Extraction - WebGL Build</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #0f1115;
+      color: #e5e7eb;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    #game-canvas {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: crosshair;
+    }
+    #hud {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      pointer-events: none;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+    }
+    .hud-box {
+      background: rgba(23, 25, 28, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(6px);
+      padding: 8px 14px;
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .hud-title {
+      font-size: 10px;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .alert-meter {
+      width: 140px;
+      height: 8px;
+      background: #23272f;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 2px;
+    }
+    .alert-fill {
+      height: 100%;
+      width: 0%;
+      background: #22c55e;
+      transition: width 0.1s linear, background-color 0.2s;
+    }
+    #controls-hint {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(23, 25, 28, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 11px;
+      color: #d1d5db;
+      pointer-events: none;
+    }
+    #game-over {
+      display: none;
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 17, 21, 0.88);
+      backdrop-filter: blur(8px);
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+    }
+    button.btn {
+      background: #f2a65a;
+      color: #17191c;
+      font-weight: 700;
+      border: none;
+      padding: 10px 22px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      letter-spacing: 0.05em;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    button.btn:hover {
+      opacity: 0.9;
+      transform: scale(1.02);
+    }
+  </style>
+</head>
+<body>
+  <div id="game-over">
+    <h2 id="end-title" style="font-size: 24px; font-weight: 800; color: #f2a65a;">EXTRACTION SUCCESSFUL</h2>
+    <p id="end-desc" style="color: #9ca3af; font-size: 14px;">All data cores retrieved without full alert compromise.</p>
+    <button class="btn" onclick="resetGame()">REPLAY MISSION</button>
+  </div>
+
+  <div id="game-over">
+    <h2 id="end-title" style="font-size: 24px; font-weight: 800; color: #f2a65a;">EXTRACTION SUCCESSFUL</h2>
+    <p id="end-desc" style="color: #9ca3af; font-size: 14px;">All data cores retrieved without full alert compromise.</p>
+    <button class="btn" onclick="resetGame()">REPLAY MISSION</button>
+  </div>
+
+  <canvas id="game-canvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const alertFill = document.getElementById('alert-fill');
+    const stealthStatus = document.getElementById('stealth-status');
+    const lootCounter = document.getElementById('loot-counter');
+    const gameOverScreen = document.getElementById('game-over');
+    const endTitle = document.getElementById('end-title');
+    const endDesc = document.getElementById('end-desc');
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // Game State
+    let keys = {};
+    window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+    window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+    let player = {
+      x: 120,
+      y: 120,
+      radius: 14,
+      speed: 3.2,
+      crouchSpeed: 1.6,
+      angle: 0,
+      crouching: false
+    };
+
+    let enemies = [
+      { x: 340, y: 180, angle: 0, patrolPoints: [{x: 340, y: 180}, {x: 620, y: 180}], currentTarget: 1, speed: 1.5, fov: Math.PI / 3, range: 220, turnSpeed: 0.03 },
+      { x: 700, y: 440, angle: Math.PI, patrolPoints: [{x: 700, y: 440}, {x: 340, y: 440}], currentTarget: 1, speed: 1.4, fov: Math.PI / 3, range: 240, turnSpeed: 0.03 },
+      { x: 500, y: 300, angle: Math.PI/2, patrolPoints: [{x: 500, y: 180}, {x: 500, y: 460}], currentTarget: 1, speed: 1.2, fov: Math.PI / 3.5, range: 200, turnSpeed: 0.02 }
+    ];
+
+    let obstacles = [
+      { x: 200, y: 100, w: 40, h: 220 },
+      { x: 420, y: 220, w: 60, h: 140 },
+      { x: 600, y: 320, w: 40, h: 200 },
+      { x: 260, y: 420, w: 180, h: 40 }
+    ];
+
+    let dataCores = [
+      { x: 300, y: 140, collected: false },
+      { x: 500, y: 400, collected: false },
+      { x: 740, y: 200, collected: false }
+    ];
+
+    let extractionZone = { x: 80, y: 460, radius: 45, active: false };
+    let alertLevel = 0; // 0 to 100
+    let gameEnded = false;
+
+    function resetGame() {
+      player.x = 100;
+      player.y = 100;
+      alertLevel = 0;
+      dataCores.forEach(c => c.collected = false);
+      extractionZone.active = false;
+      gameEnded = false;
+      gameOverScreen.style.display = 'none';
+    }
+
+    // Line segment intersection for obstacle occlusion
+    function lineIntersectsRect(x1, y1, x2, y2, rect) {
+      const minX = rect.x, maxX = rect.x + rect.w;
+      const minY = rect.y, maxY = rect.y + rect.h;
+      // Simple sample-based ray step
+      const steps = 15;
+      for (let i = 1; i < steps; i++) {
+        const px = x1 + (x2 - x1) * (i / steps);
+        const py = y1 + (y2 - y1) * (i / steps);
+        if (px >= minX && px <= maxX && py >= minY && py <= maxY) return true;
+      }
+      return false;
+    }
+
+    function update() {
+      if (gameEnded) return;
+
+      player.crouching = !!keys['shift'];
+      const currentSpeed = player.crouching ? player.crouchSpeed : player.speed;
+
+      let dx = 0, dy = 0;
+      if (keys['w'] || keys['arrowup']) dy -= 1;
+      if (keys['s'] || keys['arrowdown']) dy += 1;
+      if (keys['a'] || keys['arrowleft']) dx -= 1;
+      if (keys['d'] || keys['arrowright']) dx += 1;
+
+      if (dx !== 0 && dy !== 0) {
+        dx *= 0.7071;
+        dy *= 0.7071;
+      }
+
+      const nextX = player.x + dx * currentSpeed;
+      const nextY = player.y + dy * currentSpeed;
+
+      // Obstacle collision
+      let collideX = false, collideY = false;
+      obstacles.forEach(o => {
+        if (nextX + player.radius > o.x && nextX - player.radius < o.x + o.w &&
+            player.y + player.radius > o.y && player.y - player.radius < o.y + o.h) {
+          collideX = true;
+        }
+        if (player.x + player.radius > o.x && player.x - player.radius < o.x + o.w &&
+            nextY + player.radius > o.y && nextY - player.radius < o.y + o.h) {
+          collideY = true;
+        }
+      });
+
+      if (!collideX && nextX > 30 && nextX < canvas.width - 30) player.x = nextX;
+      if (!collideY && nextY > 30 && nextY < canvas.height - 30) player.y = nextY;
+      if (dx !== 0 || dy !== 0) player.angle = Math.atan2(dy, dx);
+
+      // Collect data cores
+      let collectedCount = 0;
+      dataCores.forEach(core => {
+        if (!core.collected) {
+          const dist = Math.hypot(core.x - player.x, core.y - player.y);
+          if (dist < player.radius + 18) {
+            core.collected = true;
+          }
+        }
+        if (core.collected) collectedCount++;
+      });
+      if (collectedCount === dataCores.length) {
+        extractionZone.active = true;
+      }
+
+      // Check extraction
+      if (extractionZone.active) {
+        const distToExtract = Math.hypot(extractionZone.x - player.x, extractionZone.y - player.y);
+        if (distToExtract < extractionZone.radius) {
+          gameEnded = true;
+          endTitle.textContent = "EXTRACTION SUCCESSFUL!";
+          endTitle.style.color = "#f2a65a";
+          endDesc.textContent = `All ${dataCores.length} secure telemetry cores extracted in pristine condition.`;
+          gameOverScreen.style.display = 'flex';
+          return;
+        }
+      }
+
+      // Enemy AI & Vision Cones
+      let beingSeen = false;
+      enemies.forEach(enemy => {
+        // Move towards target
+        const target = enemy.patrolPoints[enemy.currentTarget];
+        const dist = Math.hypot(target.x - enemy.x, target.y - enemy.y);
+        const desiredAngle = Math.atan2(target.y - enemy.y, target.x - enemy.x);
+
+        // Smooth rotate
+        let angleDiff = desiredAngle - enemy.angle;
+        while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+        while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+        enemy.angle += Math.sign(angleDiff) * Math.min(Math.abs(angleDiff), enemy.turnSpeed);
+
+        if (dist > 5) {
+          enemy.x += Math.cos(enemy.angle) * enemy.speed;
+          enemy.y += Math.sin(enemy.angle) * enemy.speed;
+        } else {
+          enemy.currentTarget = (enemy.currentTarget + 1) % enemy.patrolPoints.length;
+        }
+
+        // Check if player is in cone
+        const distToPlayer = Math.hypot(player.x - enemy.x, player.y - enemy.y);
+        if (distToPlayer <= enemy.range) {
+          const angleToPlayer = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+          let diff = angleToPlayer - enemy.angle;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+
+          if (Math.abs(diff) < enemy.fov / 2) {
+            // Check line of sight occlusion
+            let occluded = false;
+            for (let obs of obstacles) {
+              if (lineIntersectsRect(enemy.x, enemy.y, player.x, player.y, obs)) {
+                occluded = true;
+                break;
+              }
+            }
+            if (!occluded) {
+              beingSeen = true;
+            }
+          }
+        }
+      });
+
+      if (beingSeen) {
+        const rate = player.crouching ? 0.4 : 1.1;
+        alertLevel = Math.min(100, alertLevel + rate);
+      } else {
+        alertLevel = Math.max(0, alertLevel - 0.25);
+      }
+
+      if (alertLevel >= 100) {
+        gameEnded = true;
+        endTitle.textContent = "ALARM SOUNDED // CAPTURED";
+        endTitle.style.color = "#ef4444";
+        endDesc.textContent = "Security lockdown triggered. Stay low in shadows to minimize sensory detection.";
+        gameOverScreen.style.display = 'flex';
+      }
+    }
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Clean in-canvas alert bar at top edge
+      if (alertLevel > 0) {
+        ctx.fillStyle = alertLevel > 75 ? '#ef4444' : alertLevel > 35 ? '#f2a65a' : '#22c55e';
+        ctx.fillRect(0, 0, (alertLevel / 100) * canvas.width, 3);
+      }
+
+      // Minimal in-canvas data core tracker
+      const collected = dataCores.filter(c => c.collected).length;
+      ctx.fillStyle = '#f2a65a';
+      ctx.font = '600 11px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(`CORES: ${collected}/${dataCores.length}`, canvas.width - 24, 24);
+
+      // Subtle floor grid
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+      ctx.lineWidth = 1;
+      const gridSize = 40;
+      for (let x = 0; x < canvas.width; x += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < canvas.height; y += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      // Extraction zone
+      if (extractionZone.active) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(extractionZone.x, extractionZone.y, extractionZone.radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(242, 166, 90, 0.15)';
+        ctx.fill();
+        ctx.strokeStyle = '#f2a65a';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 4]);
+        ctx.stroke();
+        ctx.fillStyle = '#f2a65a';
+        ctx.font = 'bold 11px monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('EVAC DROP', extractionZone.x, extractionZone.y + 4);
+        ctx.restore();
+      }
+
+      // Draw Obstacles
+      obstacles.forEach(o => {
+        ctx.fillStyle = '#1c1f26';
+        ctx.fillRect(o.x, o.y, o.w, o.h);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(o.x, o.y, o.w, o.h);
+
+        // Tech vent stripes
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        for (let py = o.y + 8; py < o.y + o.h - 6; py += 10) {
+          ctx.beginPath();
+          ctx.moveTo(o.x + 4, py);
+          ctx.lineTo(o.x + o.w - 4, py);
+          ctx.stroke();
+        }
+      });
+
+      // Data Cores
+      dataCores.forEach((core, i) => {
+        if (!core.collected) {
+          ctx.save();
+          const pulse = Math.sin(Date.now() / 200 + i) * 3;
+          ctx.beginPath();
+          ctx.arc(core.x, core.y, 8 + pulse, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(242, 166, 90, 0.2)';
+          ctx.fill();
+
+          ctx.beginPath();
+          ctx.arc(core.x, core.y, 6, 0, Math.PI * 2);
+          ctx.fillStyle = '#f2a65a';
+          ctx.fill();
+          ctx.strokeStyle = '#ffffff';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.restore();
+        }
+      });
+
+      // Draw Drone Patrol & Vision Cones
+      enemies.forEach(enemy => {
+        // Vision Cone
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(enemy.x, enemy.y);
+        ctx.arc(enemy.x, enemy.y, enemy.range, enemy.angle - enemy.fov / 2, enemy.angle + enemy.fov / 2);
+        ctx.closePath();
+        const coneGrad = ctx.createRadialGradient(enemy.x, enemy.y, 10, enemy.x, enemy.y, enemy.range);
+        coneGrad.addColorStop(0, alertLevel > 60 ? 'rgba(239, 68, 68, 0.4)' : 'rgba(242, 166, 90, 0.3)');
+        coneGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = coneGrad;
+        ctx.fill();
+        ctx.strokeStyle = alertLevel > 60 ? 'rgba(239, 68, 68, 0.6)' : 'rgba(242, 166, 90, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.restore();
+
+        // Enemy Drone body
+        ctx.save();
+        ctx.translate(enemy.x, enemy.y);
+        ctx.rotate(enemy.angle);
+        ctx.fillStyle = '#2d3340';
+        ctx.beginPath();
+        ctx.arc(0, 0, 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // Sensor lens
+        ctx.fillStyle = alertLevel > 60 ? '#ef4444' : '#f2a65a';
+        ctx.beginPath();
+        ctx.arc(7, 0, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+
+      // Draw Bunny Player Operative
+      ctx.save();
+      ctx.translate(player.x, player.y);
+      ctx.rotate(player.angle);
+
+      // Stealth ripple if crouching
+      if (player.crouching) {
+        ctx.beginPath();
+        ctx.arc(0, 0, player.radius + 6, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(34, 197, 94, 0.35)';
+        ctx.setLineDash([2, 4]);
+        ctx.stroke();
+      }
+
+      // Rabbit Operative Silhouette (stylized cyber rabbit)
+      ctx.fillStyle = player.crouching ? '#4ade80' : '#f2a65a';
+      ctx.beginPath();
+      ctx.arc(0, 0, player.radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bunny Ears
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.ellipse(-5, -12, 3, 9, -0.2, 0, Math.PI * 2);
+      ctx.ellipse(-5, 12, 3, 9, 0.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Visor
+      ctx.fillStyle = '#17191c';
+      ctx.fillRect(4, -5, 5, 10);
+
+      ctx.restore();
+    }
+
+    function loop() {
+      update();
+      render();
+      requestAnimationFrame(loop);
+    }
+    loop();
+  </script>
+</body>
+</html>

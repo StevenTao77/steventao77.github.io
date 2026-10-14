@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CO-OP PROTOCOL: Multiplayer Netcode - WebGL Build</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body {
+      background: #0d1117;
+      color: #e5e7eb;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    #game-canvas {
+      flex: 1;
+      width: 100%;
+      height: 100%;
+      display: block;
+      cursor: crosshair;
+    }
+    #hud {
+      position: absolute;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      display: flex;
+      justify-content: space-between;
+      pointer-events: none;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .hud-box {
+      background: rgba(23, 25, 28, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(6px);
+      padding: 8px 14px;
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .hud-title {
+      font-size: 10px;
+      color: #9ca3af;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+    #net-controls {
+      position: absolute;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(23, 25, 28, 0.9);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(6px);
+      padding: 6px 16px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 11px;
+      color: #9ca3af;
+    }
+    #net-controls input[type="range"] {
+      width: 100px;
+      accent-color: #38bdf8;
+      cursor: pointer;
+    }
+    #controls-hint {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(23, 25, 28, 0.88);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 6px 18px;
+      border-radius: 20px;
+      font-size: 11px;
+      color: #d1d5db;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <script>
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+
+    function resize() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    let simulatedPing = 45;
+
+    let keys = {};
+    window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+    window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+
+    let mouse = { x: 400, y: 300, down: false };
+    window.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top;
+    });
+    window.addEventListener('mousedown', () => { mouse.down = true; fireShot(); });
+    window.addEventListener('mouseup', () => { mouse.down = false; });
+
+    // Netcode simulation state
+    let serverTick = 0;
+    let reconciledTicks = 0;
+    let kills = 0;
+
+    // Unit Alpha (Player 1 - Client Predicted)
+    let unitAlpha = {
+      x: 180,
+      y: 280,
+      radius: 16,
+      speed: 3.5,
+      angle: 0
+    };
+
+    // Unit Bravo (Synchronized Co-op Partner AI / Remote Client)
+    let unitBravo = {
+      x: 180,
+      y: 350,
+      radius: 16,
+      speed: 3.0,
+      angle: 0
+    };
+
+    // Hostile Targets
+    let enemies = [
+      { x: 550, y: 180, hp: 100, maxHp: 100, vx: 0.8, vy: 0.5 },
+      { x: 680, y: 320, hp: 100, maxHp: 100, vx: -0.6, vy: 0.8 },
+      { x: 520, y: 440, hp: 100, maxHp: 100, vx: 0.7, vy: -0.6 }
+    ];
+
+    let lasers = [];
+
+    function fireShot() {
+      // Alpha shot
+      const angle = Math.atan2(mouse.y - unitAlpha.y, mouse.x - unitAlpha.x);
+      lasers.push({
+        x: unitAlpha.x,
+        y: unitAlpha.y,
+        vx: Math.cos(angle) * 12,
+        vy: Math.sin(angle) * 12,
+        life: 45,
+        color: '#38bdf8'
+      });
+
+      // Bravo support shot with simulated ping delay
+      setTimeout(() => {
+        if (enemies.length > 0) {
+          const nearest = enemies[0];
+          const bAngle = Math.atan2(nearest.y - unitBravo.y, nearest.x - unitBravo.x);
+          lasers.push({
+            x: unitBravo.x,
+            y: unitBravo.y,
+            vx: Math.cos(bAngle) * 12,
+            vy: Math.sin(bAngle) * 12,
+            life: 45,
+            color: '#f2a65a'
+          });
+        }
+      }, simulatedPing);
+    }
+
+    function update() {
+      serverTick++;
+      if (simulatedPing > 100 && serverTick % 40 === 0) {
+        reconciledTicks++;
+      }
+
+      // Input prediction for Alpha
+      let dx = 0, dy = 0;
+      if (keys['w'] || keys['arrowup']) dy -= 1;
+      if (keys['s'] || keys['arrowdown']) dy += 1;
+      if (keys['a'] || keys['arrowleft']) dx -= 1;
+      if (keys['d'] || keys['arrowright']) dx += 1;
+
+      if (dx !== 0 && dy !== 0) {
+        dx *= 0.7071;
+        dy *= 0.7071;
+      }
+
+      unitAlpha.x = Math.max(30, Math.min(canvas.width - 30, unitAlpha.x + dx * unitAlpha.speed));
+      unitAlpha.y = Math.max(30, Math.min(canvas.height - 30, unitAlpha.y + dy * unitAlpha.speed));
+      unitAlpha.angle = Math.atan2(mouse.y - unitAlpha.y, mouse.x - unitAlpha.x);
+
+      // Bravo formation following (Spring-damper network simulation)
+      const targetBravoX = unitAlpha.x - 40;
+      const targetBravoY = unitAlpha.y + 45;
+      unitBravo.x += (targetBravoX - unitBravo.x) * 0.08;
+      unitBravo.y += (targetBravoY - unitBravo.y) * 0.08;
+      unitBravo.angle = unitAlpha.angle;
+
+      // Update Enemies
+      enemies.forEach(e => {
+        e.x += e.vx;
+        e.y += e.vy;
+        if (e.x < 420 || e.x > canvas.width - 60) e.vx = -e.vx;
+        if (e.y < 80 || e.y > canvas.height - 80) e.vy = -e.vy;
+      });
+
+      // Update Lasers
+      for (let i = lasers.length - 1; i >= 0; i--) {
+        const l = lasers[i];
+        l.x += l.vx;
+        l.y += l.vy;
+        l.life--;
+
+        // Collision check
+        for (let enemy of enemies) {
+          const dist = Math.hypot(enemy.x - l.x, enemy.y - l.y);
+          if (dist < 22) {
+            enemy.hp -= 28;
+            l.life = 0;
+            break;
+          }
+        }
+
+        if (l.life <= 0) lasers.splice(i, 1);
+      }
+
+      // Filter dead enemies and respawn
+      enemies = enemies.filter(e => {
+        if (e.hp <= 0) {
+          kills++;
+          return false;
+        }
+        return true;
+      });
+
+      if (enemies.length < 3) {
+        enemies.push({
+          x: canvas.width - 120,
+          y: Math.random() * (canvas.height - 180) + 90,
+          hp: 100,
+          maxHp: 100,
+          vx: (Math.random() - 0.5) * 1.5,
+          vy: (Math.random() - 0.5) * 1.5
+        });
+      }
+    }
+
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Clean in-canvas status
+      ctx.fillStyle = '#38bdf8';
+      ctx.font = '600 11px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(`CORES CLEARED: ${kills}`, canvas.width - 24, 24);
+
+      // Sci-fi grid
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.04)';
+      ctx.lineWidth = 1;
+      for (let x = 0; x < canvas.width; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+      }
+      for (let y = 0; y < canvas.height; y += 40) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+      }
+
+      // Squad Tether link
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(unitAlpha.x, unitAlpha.y);
+      ctx.lineTo(unitBravo.x, unitBravo.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Aim Line for Alpha
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(unitAlpha.x, unitAlpha.y);
+      ctx.lineTo(mouse.x, mouse.y);
+      ctx.stroke();
+
+      // Lasers
+      lasers.forEach(l => {
+        ctx.strokeStyle = l.color;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(l.x, l.y);
+        ctx.lineTo(l.x - l.vx * 1.5, l.y - l.vy * 1.5);
+        ctx.stroke();
+      });
+
+      // Hostile Enemies
+      enemies.forEach(e => {
+        ctx.save();
+        ctx.translate(e.x, e.y);
+
+        // Body
+        ctx.fillStyle = '#1e2430';
+        ctx.fillRect(-16, -16, 32, 32);
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(-16, -16, 32, 32);
+
+        // HP Bar
+        ctx.fillStyle = '#23272f';
+        ctx.fillRect(-18, -26, 36, 4);
+        ctx.fillStyle = '#ef4444';
+        ctx.fillRect(-18, -26, 36 * (Math.max(0, e.hp) / e.maxHp), 4);
+
+        ctx.restore();
+      });
+
+      // Unit Alpha (Cyan)
+      ctx.save();
+      ctx.translate(unitAlpha.x, unitAlpha.y);
+      ctx.rotate(unitAlpha.angle);
+      ctx.fillStyle = '#38bdf8';
+      ctx.beginPath();
+      ctx.arc(0, 0, unitAlpha.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(8, -2, 10, 4);
+      ctx.restore();
+
+      // Unit Bravo (Amber)
+      ctx.save();
+      ctx.translate(unitBravo.x, unitBravo.y);
+      ctx.rotate(unitBravo.angle);
+      ctx.fillStyle = '#f2a65a';
+      ctx.beginPath();
+      ctx.arc(0, 0, unitBravo.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(8, -2, 10, 4);
+      ctx.restore();
+    }
+
+    function loop() {
+      update();
+      render();
+      requestAnimationFrame(loop);
+    }
+    loop();
+  </script>
+</body>
+</html>

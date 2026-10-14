@@ -1,0 +1,1701 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Steven | Gameplay Programmer Portfolio & Console Lab</title>
+  <meta name="description" content="Tactile Game Console × Gameplay Lab portfolio showcasing Unity & C# gameplay systems, mechanics design, and interactive browser-playable WebGL builds." />
+  <meta property="og:title" content="Steven | Gameplay Programmer Portfolio & Console Lab" />
+  <meta property="og:description" content="Tactile Game Console × Gameplay Lab portfolio showcasing Unity & C# gameplay systems, mechanics design, and interactive browser-playable WebGL builds." />
+  <meta property="og:type" content="website" />
+  <meta name="twitter:card" content="summary_large_image" />
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Tailwind CSS CDN -->
+  <script src="vendor/tailwind.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            charcoal: '#17191C',
+            brand: '#F2A65A',
+          },
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'monospace'],
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- React 18, ReactDOM 18, and Babel Standalone CDNs -->
+  <script src="vendor/react.production.min.js" crossorigin></script>
+  <script src="vendor/react-dom.production.min.js" crossorigin></script>
+  <script src="vendor/babel.min.js"></script>
+
+  <style>
+    /* Custom Scrollbar & Animations */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #131518;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #282b35;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #F2A65A;
+    }
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .animate-spin-slow {
+      animation: spin-slow 8s linear infinite;
+    }
+    body {
+      background-color: #17191C;
+      color: #E5E7EB;
+      font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-[#17191C] text-[#E5E7EB] antialiased selection:bg-[#F2A65A]/25 selection:text-[#F2A65A] min-h-screen">
+  <div id="root"></div>
+
+  <!-- STANDALONE SELF-CONTAINED APPLICATION -->
+  <link rel="stylesheet" href="project-runtime.css">
+  <script src="portfolio-model.js"></script>
+  <script src="project-runtime.js"></script>
+  <script src="portfolio-config.js"></script>
+  <script src="portfolio-bridge.js"></script>
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // =========================================================================
+    // 1. EMBEDDED WEBGL MINI-GAMES (Allows 100% offline double-click play)
+    // =========================================================================
+    const BUNNY_GAME_HTML = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { background: #0f1115; color: #e5e7eb; font-family: monospace; overflow: hidden; width: 100vw; height: 100vh; }
+    #canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+    #game-over { display: none; position: absolute; inset: 0; background: rgba(15,17,21,0.92); flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+    .btn { background: #f2a65a; color: #17191c; font-weight: 700; border: none; padding: 9px 20px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div id="game-over">
+    <h2 id="end-title" style="font-size: 22px; font-weight: 800; color: #f2a65a;">MISSION COMPLETED</h2>
+    <p id="end-desc" style="color: #9ca3af; font-size: 13px;">All data cores retrieved without detection.</p>
+    <button class="btn" onclick="resetGame()">PLAY AGAIN</button>
+  </div>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const gameOverScreen = document.getElementById('game-over');
+    const endTitle = document.getElementById('end-title');
+    const endDesc = document.getElementById('end-desc');
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.addEventListener('resize', resize);
+    resize();
+    let keys = {};
+    window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+    window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+    let player = { x: 120, y: 120, radius: 14, speed: 3.2, crouchSpeed: 1.6, angle: 0, crouching: false };
+    let enemies = [
+      { x: 340, y: 180, angle: 0, patrolPoints: [{x: 340, y: 180}, {x: 620, y: 180}], currentTarget: 1, speed: 1.5, fov: Math.PI / 3, range: 220, turnSpeed: 0.03 },
+      { x: 700, y: 440, angle: Math.PI, patrolPoints: [{x: 700, y: 440}, {x: 340, y: 440}], currentTarget: 1, speed: 1.4, fov: Math.PI / 3, range: 240, turnSpeed: 0.03 },
+      { x: 500, y: 300, angle: Math.PI/2, patrolPoints: [{x: 500, y: 180}, {x: 500, y: 460}], currentTarget: 1, speed: 1.2, fov: Math.PI / 3.5, range: 200, turnSpeed: 0.02 }
+    ];
+    let obstacles = [
+      { x: 200, y: 100, w: 40, h: 220 },
+      { x: 420, y: 220, w: 60, h: 140 },
+      { x: 600, y: 320, w: 40, h: 200 },
+      { x: 260, y: 420, w: 180, h: 40 }
+    ];
+    let dataCores = [
+      { x: 300, y: 140, collected: false },
+      { x: 500, y: 400, collected: false },
+      { x: 740, y: 200, collected: false }
+    ];
+    let extractionZone = { x: 80, y: 460, radius: 45, active: false };
+    let alertLevel = 0, gameEnded = false;
+    function resetGame() {
+      player.x = 100; player.y = 100; alertLevel = 0;
+      dataCores.forEach(c => c.collected = false);
+      extractionZone.active = false; gameEnded = false;
+      gameOverScreen.style.display = 'none';
+    }
+    function lineIntersectsRect(x1, y1, x2, y2, rect) {
+      for (let i = 1; i < 15; i++) {
+        const px = x1 + (x2 - x1) * (i / 15), py = y1 + (y2 - y1) * (i / 15);
+        if (px >= rect.x && px <= rect.x + rect.w && py >= rect.y && py <= rect.y + rect.h) return true;
+      }
+      return false;
+    }
+    function update() {
+      if (gameEnded) return;
+      player.crouching = !!keys['shift'];
+      const curSpeed = player.crouching ? player.crouchSpeed : player.speed;
+      let dx = 0, dy = 0;
+      if (keys['w'] || keys['arrowup']) dy -= 1;
+      if (keys['s'] || keys['arrowdown']) dy += 1;
+      if (keys['a'] || keys['arrowleft']) dx -= 1;
+      if (keys['d'] || keys['arrowright']) dx += 1;
+      if (dx !== 0 && dy !== 0) { dx *= 0.7071; dy *= 0.7071; }
+      const nextX = player.x + dx * curSpeed, nextY = player.y + dy * curSpeed;
+      let collideX = false, collideY = false;
+      obstacles.forEach(o => {
+        if (nextX + player.radius > o.x && nextX - player.radius < o.x + o.w && player.y + player.radius > o.y && player.y - player.radius < o.y + o.h) collideX = true;
+        if (player.x + player.radius > o.x && player.x - player.radius < o.x + o.w && nextY + player.radius > o.y && nextY - player.radius < o.y + o.h) collideY = true;
+      });
+      if (!collideX && nextX > 30 && nextX < canvas.width - 30) player.x = nextX;
+      if (!collideY && nextY > 30 && nextY < canvas.height - 30) player.y = nextY;
+      if (dx !== 0 || dy !== 0) player.angle = Math.atan2(dy, dx);
+      let collected = 0;
+      dataCores.forEach(c => {
+        if (!c.collected && Math.hypot(c.x - player.x, c.y - player.y) < player.radius + 18) c.collected = true;
+        if (c.collected) collected++;
+      });
+      if (collected === dataCores.length) extractionZone.active = true;
+      if (extractionZone.active && Math.hypot(extractionZone.x - player.x, extractionZone.y - player.y) < extractionZone.radius) {
+        gameEnded = true; endTitle.textContent = "EXTRACTION SUCCESSFUL!"; endTitle.style.color = "#f2a65a";
+        endDesc.textContent = "All telemetry data cores retrieved."; gameOverScreen.style.display = 'flex'; return;
+      }
+      let seen = false;
+      enemies.forEach(e => {
+        const pt = e.patrolPoints[e.currentTarget];
+        const angle = Math.atan2(pt.y - e.y, pt.x - e.x);
+        let diff = angle - e.angle;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        e.angle += Math.sign(diff) * Math.min(Math.abs(diff), e.turnSpeed);
+        if (Math.hypot(pt.x - e.x, pt.y - e.y) > 5) { e.x += Math.cos(e.angle) * e.speed; e.y += Math.sin(e.angle) * e.speed; }
+        else { e.currentTarget = (e.currentTarget + 1) % e.patrolPoints.length; }
+        const dist = Math.hypot(player.x - e.x, player.y - e.y);
+        if (dist <= e.range) {
+          let pDiff = Math.atan2(player.y - e.y, player.x - e.x) - e.angle;
+          while (pDiff > Math.PI) pDiff -= Math.PI * 2;
+          while (pDiff < -Math.PI) pDiff += Math.PI * 2;
+          if (Math.abs(pDiff) < e.fov / 2) {
+            let occ = false;
+            for (let obs of obstacles) { if (lineIntersectsRect(e.x, e.y, player.x, player.y, obs)) { occ = true; break; } }
+            if (!occ) seen = true;
+          }
+        }
+      });
+      alertLevel = seen ? Math.min(100, alertLevel + (player.crouching ? 0.4 : 1.1)) : Math.max(0, alertLevel - 0.25);
+      if (alertLevel >= 100) {
+        gameEnded = true; endTitle.textContent = "ALARM SOUNDED // CAPTURED"; endTitle.style.color = "#ef4444";
+        endDesc.textContent = "Lockdown triggered. Stay in shadows."; gameOverScreen.style.display = 'flex';
+      }
+    }
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (alertLevel > 0) {
+        ctx.fillStyle = alertLevel > 75 ? '#ef4444' : alertLevel > 35 ? '#f2a65a' : '#22c55e';
+        ctx.fillRect(0, 0, (alertLevel / 100) * canvas.width, 3);
+      }
+      ctx.fillStyle = '#f2a65a'; ctx.font = '600 11px monospace'; ctx.textAlign = 'right';
+      ctx.fillText(\`CORES: \${dataCores.filter(c => c.collected).length}/\${dataCores.length}\`, canvas.width - 24, 24);
+      ctx.strokeStyle = 'rgba(255,255,255,0.03)'; ctx.lineWidth = 1;
+      for (let x = 0; x < canvas.width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+      for (let y = 0; y < canvas.height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+      if (extractionZone.active) {
+        ctx.beginPath(); ctx.arc(extractionZone.x, extractionZone.y, extractionZone.radius, 0, Math.PI*2);
+        ctx.fillStyle = 'rgba(242,166,90,0.15)'; ctx.fill(); ctx.strokeStyle = '#f2a65a'; ctx.stroke();
+      }
+      obstacles.forEach(o => { ctx.fillStyle = '#1c1f26'; ctx.fillRect(o.x, o.y, o.w, o.h); ctx.strokeStyle = 'rgba(255,255,255,0.12)'; ctx.strokeRect(o.x, o.y, o.w, o.h); });
+      dataCores.forEach((c, i) => {
+        if (!c.collected) {
+          ctx.beginPath(); ctx.arc(c.x, c.y, 6, 0, Math.PI*2); ctx.fillStyle = '#f2a65a'; ctx.fill();
+        }
+      });
+      enemies.forEach(e => {
+        ctx.save(); ctx.beginPath(); ctx.moveTo(e.x, e.y); ctx.arc(e.x, e.y, e.range, e.angle - e.fov/2, e.angle + e.fov/2); ctx.closePath();
+        ctx.fillStyle = alertLevel > 60 ? 'rgba(239,68,68,0.25)' : 'rgba(242,166,90,0.18)'; ctx.fill(); ctx.restore();
+        ctx.save(); ctx.translate(e.x, e.y); ctx.rotate(e.angle); ctx.fillStyle = '#2d3340';
+        ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI*2); ctx.fill(); ctx.strokeStyle = '#ef4444'; ctx.stroke(); ctx.restore();
+      });
+      ctx.save(); ctx.translate(player.x, player.y); ctx.rotate(player.angle);
+      ctx.fillStyle = player.crouching ? '#4ade80' : '#f2a65a';
+      ctx.beginPath(); ctx.arc(0, 0, player.radius, 0, Math.PI*2); ctx.fill();
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.ellipse(-5, -12, 3, 9, -0.2, 0, Math.PI*2); ctx.ellipse(-5, 12, 3, 9, 0.2, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+    function loop() { update(); render(); requestAnimationFrame(loop); }
+    loop();
+  <\/script>
+</body>
+</html>`;
+
+    const FROG_GAME_HTML = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { background: #0d1217; color: #e5e7eb; font-family: monospace; overflow: hidden; width: 100vw; height: 100vh; }
+    #canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+    #modal { display: none; position: absolute; inset: 0; background: rgba(13,18,23,0.92); flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+    .btn { background: #2dd4bf; color: #0f172a; font-weight: 700; border: none; padding: 9px 20px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div id="modal">
+    <h2 style="font-size: 22px; font-weight: 800; color: #2dd4bf;">APEX ALTITUDE REACHED</h2>
+    <p style="color: #9ca3af; font-size: 13px;">Trajectory successfully cleared.</p>
+    <button class="btn" onclick="resetGame()">PLAY AGAIN</button>
+  </div>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const modal = document.getElementById('modal');
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.addEventListener('resize', resize);
+    resize();
+    const GRAVITY = 0.45, DRAG = 0.995, MAX_POWER = 18;
+    let frog = { x: 140, y: 400, vx: 0, vy: 0, radius: 16, onGround: false, squash: 1 };
+    let platforms = [
+      { x: 80, y: 440, w: 180, h: 22 }, { x: 300, y: 380, w: 140, h: 20 },
+      { x: 480, y: 280, w: 160, h: 20 }, { x: 260, y: 200, w: 140, h: 20 },
+      { x: 480, y: 120, w: 180, h: 20 }, { x: 720, y: 240, w: 150, h: 20 }
+    ];
+    let fireflies = [
+      { x: 370, y: 330, collected: false }, { x: 560, y: 230, collected: false },
+      { x: 330, y: 150, collected: false }, { x: 570, y: 80, collected: false }, { x: 790, y: 190, collected: false }
+    ];
+    let charging = false, chargeAmount = 0, aimAngle = -Math.PI / 4, fliesCollected = 0;
+    let mousePos = { x: 300, y: 300 };
+    window.addEventListener('mousemove', e => {
+      const r = canvas.getBoundingClientRect(); mousePos.x = e.clientX - r.left; mousePos.y = e.clientY - r.top;
+      if (charging) aimAngle = Math.atan2(mousePos.y - frog.y, mousePos.x - frog.x);
+    });
+    window.addEventListener('mousedown', () => { if (frog.onGround) { charging = true; chargeAmount = 0.1; } });
+    window.addEventListener('mouseup', () => { if (charging) launchFrog(); });
+    window.addEventListener('keydown', e => {
+      if (e.code === 'Space' && frog.onGround && !charging) { charging = true; chargeAmount = 0.1; }
+      if (e.key === 'a' || e.key === 'ArrowLeft') aimAngle -= 0.1;
+      if (e.key === 'd' || e.key === 'ArrowRight') aimAngle += 0.1;
+    });
+    window.addEventListener('keyup', e => { if (e.code === 'Space' && charging) launchFrog(); });
+    function launchFrog() {
+      charging = false; const power = chargeAmount * MAX_POWER;
+      frog.vx = Math.cos(aimAngle) * power; frog.vy = Math.sin(aimAngle) * power;
+      frog.onGround = false; frog.squash = 0.7;
+    }
+    function resetGame() {
+      frog.x = 140; frog.y = 400; frog.vx = 0; frog.vy = 0; frog.onGround = false;
+      fliesCollected = 0; fireflies.forEach(f => f.collected = false); modal.style.display = 'none';
+    }
+    function update() {
+      if (charging) { chargeAmount = Math.min(1.0, chargeAmount + 0.025); aimAngle = Math.atan2(mousePos.y - frog.y, mousePos.x - frog.x); }
+      if (!frog.onGround) {
+        frog.vx *= DRAG; frog.vy += GRAVITY; frog.x += frog.vx; frog.y += frog.vy;
+        frog.squash += (1.0 - frog.squash) * 0.1;
+        if (frog.vy > 0) {
+          for (let p of platforms) {
+            if (frog.x >= p.x - 8 && frog.x <= p.x + p.w + 8 && frog.y + frog.radius >= p.y && frog.y - frog.vy + frog.radius <= p.y + 12) {
+              frog.y = p.y - frog.radius; frog.vy = 0; frog.vx = 0; frog.onGround = true; frog.squash = 1.35; break;
+            }
+          }
+        }
+        if (frog.x - frog.radius < 20) { frog.x = 20 + frog.radius; frog.vx = -frog.vx * 0.7; }
+        if (frog.x + frog.radius > canvas.width - 20) { frog.x = canvas.width - 20 - frog.radius; frog.vx = -frog.vx * 0.7; }
+        if (frog.y > canvas.height + 50) { frog.x = 140; frog.y = 400; frog.vx = 0; frog.vy = 0; }
+      } else { frog.squash += (1.0 - frog.squash) * 0.15; }
+      fireflies.forEach(f => {
+        if (!f.collected && Math.hypot(f.x - frog.x, f.y - frog.y) < frog.radius + 15) { f.collected = true; fliesCollected++; }
+      });
+      if (fliesCollected === fireflies.length) modal.style.display = 'flex';
+    }
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#2dd4bf'; ctx.font = '600 11px monospace'; ctx.textAlign = 'right';
+      ctx.fillText(\`FLIES: \${fliesCollected}/\${fireflies.length}\`, canvas.width - 24, 24);
+      platforms.forEach(p => {
+        ctx.fillStyle = '#1e2430'; ctx.fillRect(p.x, p.y, p.w, p.h);
+        ctx.strokeStyle = '#2dd4bf'; ctx.lineWidth = 1.5; ctx.strokeRect(p.x, p.y, p.w, p.h);
+      });
+      fireflies.forEach(f => {
+        if (!f.collected) {
+          ctx.beginPath(); ctx.arc(f.x, f.y, 5, 0, Math.PI*2); ctx.fillStyle = '#f2a65a'; ctx.fill();
+        }
+      });
+      if (charging) {
+        ctx.strokeStyle = '#2dd4bf'; ctx.lineWidth = 2; ctx.setLineDash([4, 6]);
+        ctx.beginPath(); ctx.moveTo(frog.x, frog.y);
+        let sx = frog.x, sy = frog.y, svx = Math.cos(aimAngle) * (chargeAmount * MAX_POWER), svy = Math.sin(aimAngle) * (chargeAmount * MAX_POWER);
+        for (let i = 0; i < 30; i++) { svx *= DRAG; svy += GRAVITY; sx += svx; sy += svy; ctx.lineTo(sx, sy); }
+        ctx.stroke(); ctx.setLineDash([]);
+      }
+      ctx.save(); ctx.translate(frog.x, frog.y);
+      ctx.scale(1 / Math.sqrt(frog.squash), frog.squash);
+      ctx.fillStyle = '#2dd4bf'; ctx.beginPath(); ctx.ellipse(0, 0, frog.radius * 1.1, frog.radius * 0.9, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    function loop() { update(); render(); requestAnimationFrame(loop); }
+    loop();
+  <\/script>
+</body>
+</html>`;
+
+    const COOP_GAME_HTML = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body { background: #0d1117; color: #e5e7eb; font-family: monospace; overflow: hidden; width: 100vw; height: 100vh; }
+    #canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.addEventListener('resize', resize);
+    resize();
+    let keys = {};
+    window.addEventListener('keydown', e => { keys[e.key.toLowerCase()] = true; });
+    window.addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
+    let mouse = { x: 400, y: 300 };
+    window.addEventListener('mousemove', e => { const r = canvas.getBoundingClientRect(); mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top; });
+    window.addEventListener('mousedown', () => fireLaser());
+    let unitAlpha = { x: 180, y: 280, radius: 16, speed: 3.5, angle: 0 };
+    let unitBravo = { x: 180, y: 350, radius: 16, speed: 3.0, angle: 0 };
+    let enemies = [
+      { x: 550, y: 180, hp: 100, maxHp: 100, vx: 0.8, vy: 0.5 },
+      { x: 680, y: 320, hp: 100, maxHp: 100, vx: -0.6, vy: 0.8 },
+      { x: 520, y: 440, hp: 100, maxHp: 100, vx: 0.7, vy: -0.6 }
+    ];
+    let lasers = [], kills = 0;
+    function fireLaser() {
+      const angle = Math.atan2(mouse.y - unitAlpha.y, mouse.x - unitAlpha.x);
+      lasers.push({ x: unitAlpha.x, y: unitAlpha.y, vx: Math.cos(angle)*12, vy: Math.sin(angle)*12, life: 40, color: '#38bdf8' });
+      setTimeout(() => {
+        if (enemies.length > 0) {
+          const bAngle = Math.atan2(enemies[0].y - unitBravo.y, enemies[0].x - unitBravo.x);
+          lasers.push({ x: unitBravo.x, y: unitBravo.y, vx: Math.cos(bAngle)*12, vy: Math.sin(bAngle)*12, life: 40, color: '#f2a65a' });
+        }
+      }, 50);
+    }
+    function update() {
+      let dx = 0, dy = 0;
+      if (keys['w'] || keys['arrowup']) dy -= 1;
+      if (keys['s'] || keys['arrowdown']) dy += 1;
+      if (keys['a'] || keys['arrowleft']) dx -= 1;
+      if (keys['d'] || keys['arrowright']) dx += 1;
+      if (dx !== 0 && dy !== 0) { dx *= 0.7071; dy *= 0.7071; }
+      unitAlpha.x = Math.max(30, Math.min(canvas.width - 30, unitAlpha.x + dx * unitAlpha.speed));
+      unitAlpha.y = Math.max(30, Math.min(canvas.height - 30, unitAlpha.y + dy * unitAlpha.speed));
+      unitAlpha.angle = Math.atan2(mouse.y - unitAlpha.y, mouse.x - unitAlpha.x);
+      unitBravo.x += ((unitAlpha.x - 40) - unitBravo.x) * 0.08;
+      unitBravo.y += ((unitAlpha.y + 45) - unitBravo.y) * 0.08;
+      unitBravo.angle = unitAlpha.angle;
+      enemies.forEach(e => {
+        e.x += e.vx; e.y += e.vy;
+        if (e.x < 420 || e.x > canvas.width - 60) e.vx = -e.vx;
+        if (e.y < 80 || e.y > canvas.height - 80) e.vy = -e.vy;
+      });
+      for (let i = lasers.length - 1; i >= 0; i--) {
+        const l = lasers[i]; l.x += l.vx; l.y += l.vy; l.life--;
+        for (let e of enemies) {
+          if (Math.hypot(e.x - l.x, e.y - l.y) < 22) { e.hp -= 30; l.life = 0; break; }
+        }
+        if (l.life <= 0) lasers.splice(i, 1);
+      }
+      enemies = enemies.filter(e => { if (e.hp <= 0) { kills++; return false; } return true; });
+      if (enemies.length < 3) {
+        enemies.push({ x: canvas.width - 100, y: Math.random() * (canvas.height - 180) + 90, hp: 100, maxHp: 100, vx: (Math.random()-0.5)*1.5, vy: (Math.random()-0.5)*1.5 });
+      }
+    }
+    function render() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#38bdf8'; ctx.font = '600 11px monospace'; ctx.textAlign = 'right';
+      ctx.fillText(\`TARGETS DEFEATED: \${kills}\`, canvas.width - 24, 24);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)'; ctx.setLineDash([4, 4]);
+      ctx.beginPath(); ctx.moveTo(unitAlpha.x, unitAlpha.y); ctx.lineTo(unitBravo.x, unitBravo.y); ctx.stroke(); ctx.setLineDash([]);
+      lasers.forEach(l => { ctx.strokeStyle = l.color; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(l.x, l.y); ctx.lineTo(l.x - l.vx*1.5, l.y - l.vy*1.5); ctx.stroke(); });
+      enemies.forEach(e => {
+        ctx.fillStyle = '#1e2430'; ctx.fillRect(e.x - 16, e.y - 16, 32, 32);
+        ctx.strokeStyle = '#ef4444'; ctx.strokeRect(e.x - 16, e.y - 16, 32, 32);
+      });
+      ctx.save(); ctx.translate(unitAlpha.x, unitAlpha.y); ctx.rotate(unitAlpha.angle);
+      ctx.fillStyle = '#38bdf8'; ctx.beginPath(); ctx.arc(0, 0, unitAlpha.radius, 0, Math.PI*2); ctx.fill(); ctx.restore();
+      ctx.save(); ctx.translate(unitBravo.x, unitBravo.y); ctx.rotate(unitBravo.angle);
+      ctx.fillStyle = '#f2a65a'; ctx.beginPath(); ctx.arc(0, 0, unitBravo.radius, 0, Math.PI*2); ctx.fill(); ctx.restore();
+    }
+    function loop() { update(); render(); requestAnimationFrame(loop); }
+    loop();
+  <\/script>
+</body>
+</html>`;
+
+    // =========================================================================
+    // 2. CENTRALIZED PORTFOLIO CONFIGURATION DATA
+    // =========================================================================
+    const PORTFOLIO_DATA = {
+      header: {
+        name: "STEVEN",
+        role: "GAMEPLAY PROGRAMMER",
+      },
+      hero: {
+        title: "I BUILD GAMEPLAY.",
+      },
+      games: [
+        {
+          id: "bunny",
+          title: "BUNNY",
+          subtitle: "3D Stealth / Extraction",
+          genre: "3D Stealth / Extraction",
+          coverImage: "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80",
+          webglUrl: "./public/games/bunny/index.html",
+          srcDoc: BUNNY_GAME_HTML,
+          techTags: ["Unity 2022.3", "C#", "AI Perception", "NavMesh"],
+          description: "Tactical isometric sneaking prototype with dynamic AI patrol cones, obstacle raycast occlusion, and data core extraction.",
+          githubUrl: "https://github.com/steven-gameplay/bunny-stealth-systems",
+          accentColor: "#F2A65A",
+          cartridgeCode: "BUN-01",
+        },
+        {
+          id: "frog-jump",
+          title: "FROG JUMP",
+          subtitle: "2D Physics Mechanics",
+          genre: "2D Physics Mechanics",
+          coverImage: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=800&q=80",
+          webglUrl: "./public/games/frog-jump/index.html",
+          srcDoc: FROG_GAME_HTML,
+          techTags: ["Unity 2D", "C#", "Verlet Physics", "Spring Solvers"],
+          description: "Kinetic impulse charging, real-time parabolic trajectory prediction, and procedural harmonic squash-and-stretch game feel.",
+          githubUrl: "https://github.com/steven-gameplay/frog-jump-physics",
+          accentColor: "#2DD4BF",
+          cartridgeCode: "FRG-02",
+        },
+        {
+          id: "co-op",
+          title: "CO-OP PROTOCOL",
+          subtitle: "Multiplayer Netcode",
+          genre: "Multiplayer Netcode",
+          coverImage: "https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=800&q=80",
+          webglUrl: "./public/games/co-op/index.html",
+          srcDoc: COOP_GAME_HTML,
+          techTags: ["Unity", "C#", "Netcode", "Client Prediction"],
+          description: "Twin-unit tactical combat with server-authoritative ticks, client prediction, and packet rollback reconciliation under simulated latency.",
+          githubUrl: "https://github.com/steven-gameplay/coop-netcode-systems",
+          accentColor: "#38BDF8",
+          cartridgeCode: "COP-03",
+        }
+      ],
+      about: {
+        avatar: "https://images.unsplash.com/photo-1566492031773-4f4e44671857?auto=format&fit=crop&w=400&q=80",
+        bio: [
+          "I am a Gameplay Programmer dedicated to game feel, responsive character controllers, and robust mechanical systems.",
+          "My core focus lies in the translation between player intention and on-screen kinematics: deterministic state machines, trajectory solvers, and scalable modular architectures.",
+          "I love building games that feel sharp, physically grounded, and punchy from the very first frame of user input."
+        ],
+        skills: [
+          "Unity & C#", "Unreal Engine 5 (C++ & Blueprints)", "Character Controllers & State Machines",
+          "Procedural Animation & Game Feel", "Physics Solvers & Kinematics", "AI Patrol, NavMesh & Sensory Cones",
+          "Client-Side Prediction & Netcode", "Custom Editor Tooling & Gizmos", "Git / CI/CD Workflows"
+        ]
+      },
+      resume: {
+        downloadPdfUrl: "/resume.pdf",
+        experiences: [
+          {
+            role: "Gameplay Systems Programmer",
+            company: "Aetheria Interactive",
+            period: "2023 - Present",
+            highlights: [
+              "Architected custom 3C (Camera, Character, Controller) system for an unannounced action RPG, achieving zero-drift input responsiveness.",
+              "Implemented modular weapon ability node-graph empowering game designers to author 40+ combat behaviors without code changes.",
+              "Optimized frame-time overhead of physics collision queries by 42% via spatial partitioning grids."
+            ]
+          },
+          {
+            role: "Junior Gameplay Programmer",
+            company: "Voxel Forge Studios",
+            period: "2021 - 2023",
+            highlights: [
+              "Programmed enemy combat AI decision trees and obstacle avoidance routines in Unity C#.",
+              "Implemented client-side prediction and server reconciliation for 4-player co-op arcade encounters.",
+              "Built custom inspection tooling and live debug gizmos reducing designer onboarding time by 30%."
+            ]
+          }
+        ],
+        education: [
+          {
+            degree: "B.S. in Computer Science (Game Engineering Focus)",
+            school: "University of Technology",
+            period: "2017 - 2021"
+          }
+        ]
+      },
+      contact: {
+        email: "steven.gameplay.dev@gmail.com",
+        links: [
+          { label: "GitHub", url: "https://github.com", icon: "github" },
+          { label: "LinkedIn", url: "https://linkedin.com", icon: "linkedin" },
+          { label: "Itch.io", url: "https://itch.io", icon: "itch" }
+        ]
+      }
+    };
+
+    const SAMPLE_GAMES = Object.fromEntries(PORTFOLIO_DATA.games.map(p => [p.id,p.srcDoc]));
+    const ORIGINAL_PROFILE = JSON.parse(JSON.stringify({...Object.fromEntries(['header','hero','about','resume','contact'].map(key => [key, PORTFOLIO_DATA[key]])),games:PORTFOLIO_DATA.games.map(p=>PortfolioModel.project({...p,sampleId:p.id}))}));
+    const applyProfile = (value) => {
+      const config = PortfolioModel.migrate(value,ORIGINAL_PROFILE);
+      for (const key of ['header','hero','about','resume','contact']) PORTFOLIO_DATA[key] = config.data[key];
+      PORTFOLIO_DATA.games = config.data.games.map(p => ({...p,srcDoc:p.player.mode==='sample'?SAMPLE_GAMES[p.sampleId]:undefined,webglUrl:p.player.url}));
+      window.applyPortfolioStyle(config.style);
+    };
+    applyProfile(window.PORTFOLIO_CUSTOM);
+
+    // =========================================================================
+    // 3. SOUND SYNTHESIZER (Native Web Audio API - Works 100% offline)
+    // =========================================================================
+    let audioCtx = null;
+    let soundEnabled = true;
+
+    function getAudioContext() {
+      if (typeof window === 'undefined') return null;
+      if (!audioCtx) {
+        const AudioClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioClass) audioCtx = new AudioClass();
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume().catch(() => {});
+      }
+      return audioCtx;
+    }
+
+    const soundManager = {
+      isEnabled: () => soundEnabled,
+      toggleSound: () => {
+        soundEnabled = !soundEnabled;
+        return soundEnabled;
+      },
+      playClick: () => {
+        if (!soundEnabled) return;
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        try {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(650, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(140, ctx.currentTime + 0.04);
+          gain.gain.setValueAtTime(0.08, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.04);
+        } catch {}
+      },
+      playCartridgeHover: () => {
+        if (!soundEnabled) return;
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        try {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(420, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(540, ctx.currentTime + 0.03);
+          gain.gain.setValueAtTime(0.04, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.03);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.03);
+        } catch {}
+      },
+      playCartridgeInsert: () => {
+        if (!soundEnabled) return;
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        try {
+          const osc1 = ctx.createOscillator();
+          const gain1 = ctx.createGain();
+          osc1.type = 'triangle';
+          osc1.frequency.setValueAtTime(220, ctx.currentTime);
+          osc1.frequency.exponentialRampToValueAtTime(90, ctx.currentTime + 0.06);
+          gain1.gain.setValueAtTime(0.12, ctx.currentTime);
+          gain1.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.06);
+          osc1.connect(gain1);
+          gain1.connect(ctx.destination);
+          osc1.start();
+          osc1.stop(ctx.currentTime + 0.06);
+
+          const osc2 = ctx.createOscillator();
+          const gain2 = ctx.createGain();
+          osc2.type = 'square';
+          osc2.frequency.setValueAtTime(320, ctx.currentTime + 0.08);
+          osc2.frequency.exponentialRampToValueAtTime(110, ctx.currentTime + 0.16);
+          gain2.gain.setValueAtTime(0.09, ctx.currentTime + 0.08);
+          gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.16);
+          osc2.connect(gain2);
+          gain2.connect(ctx.destination);
+          osc2.start(ctx.currentTime + 0.08);
+          osc2.stop(ctx.currentTime + 0.16);
+        } catch {}
+      },
+      playConsoleBoot: () => {
+        if (!soundEnabled) return;
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        try {
+          const now = ctx.currentTime;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(330, now);
+          osc.frequency.setValueAtTime(440, now + 0.08);
+          osc.frequency.setValueAtTime(660, now + 0.16);
+          osc.frequency.setValueAtTime(880, now + 0.24);
+          gain.gain.setValueAtTime(0.08, now);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.38);
+        } catch {}
+      },
+      playEject: () => {
+        if (!soundEnabled) return;
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        try {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(260, ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(480, ctx.currentTime + 0.08);
+          gain.gain.setValueAtTime(0.07, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.08);
+        } catch {}
+      }
+    };
+
+    // =========================================================================
+    // 4. CLEAN SVG ICON COMPONENTS
+    // =========================================================================
+    const IconPlay = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="6 3 20 12 6 21 6 3"></polygon></svg>
+    );
+    const IconInfo = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
+    );
+    const IconGithub = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"></path><path d="M9 18c-4.51 2-5-2-7-2"></path></svg>
+    );
+    const IconDisc = ({ className = "w-4 h-4", style = {} }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className} style={style}><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="4"></circle><line x1="12" y1="2" x2="12" y2="4"></line><line x1="12" y1="20" x2="12" y2="22"></line><line x1="20" y1="12" x2="22" y2="12"></line><line x1="2" y1="12" x2="4" y2="12"></line></svg>
+    );
+    const IconPower = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M12 2v10"></path><path d="M18.4 6.6a9 9 0 1 1-12.77.04"></path></svg>
+    );
+    const IconRotateCcw = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+    );
+    const IconMaximize2 = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+    );
+    const IconMinimize2 = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="4 14 10 14 10 20"></polyline><polyline points="20 10 14 10 14 4"></polyline><line x1="14" y1="10" x2="21" y2="3"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+    );
+    const IconVolume2 = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M15.54 8.46a5 5 0 0 1 0 7.07"></path><path d="M19.07 4.93a10 10 0 0 1 0 14.14"></path></svg>
+    );
+    const IconVolumeX = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><line x1="23" y1="9" x2="17" y2="15"></line><line x1="17" y1="9" x2="23" y2="15"></line></svg>
+    );
+    const IconGamepad2 = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="6" y1="12" x2="10" y2="12"></line><line x1="8" y1="10" x2="8" y2="14"></line><line x1="15" y1="13" x2="15.01" y2="13"></line><line x1="18" y1="11" x2="18.01" y2="11"></line><rect x="2" y="6" width="20" height="12" rx="2"></rect></svg>
+    );
+    const IconX = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+    );
+    const IconCode2 = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+    );
+    const IconUser = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+    );
+    const IconDownload = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+    );
+    const IconBriefcase = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+    );
+    const IconGraduationCap = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg>
+    );
+    const IconMail = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"></path></svg>
+    );
+    const IconCheck = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="20 6 9 17 4 12"></polyline></svg>
+    );
+    const IconCopy = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+    );
+    const IconLinkedin = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path><rect x="2" y="9" width="4" height="12"></rect><circle cx="4" cy="4" r="2"></circle></svg>
+    );
+    const IconExternalLink = ({ className = "w-4 h-4" }) => (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+    );
+    const IconEject = ({ className = "w-3.5 h-3.5" }) => (
+      <svg viewBox="0 0 24 24" fill="currentColor" className={className}>
+        <polygon points="12,4 4,14 20,14" />
+        <rect x="4" y="17" width="16" height="3" rx="0.5" />
+      </svg>
+    );
+
+    // =========================================================================
+    // 5. NAVBAR COMPONENT
+    // =========================================================================
+    const Navbar = ({ currentTab, onTabChange, soundEnabled, onToggleSound }) => {
+      const tabs = [
+        { id: 'about', label: 'About Me' },
+        { id: 'games', label: 'Games' },
+        { id: 'resume', label: 'Resume' },
+        { id: 'contact', label: 'Contact' }
+      ];
+
+      const handleTab = (id) => {
+        soundManager.playClick();
+        onTabChange(id);
+      };
+
+      return (
+        <header className="sticky top-0 z-40 w-full bg-[#17191C]/92 backdrop-blur-md border-b border-white/8 transition-colors">
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-4 px-4 sm:px-6 py-3.5">
+            <button
+              onClick={() => handleTab('games')}
+              className="flex items-center gap-2.5 text-left group cursor-pointer focus:outline-none"
+            >
+              <div className="w-7 h-7 rounded-lg bg-[#22252c] border border-white/8 flex items-center justify-center text-[#F2A65A] group-hover:scale-105 transition-transform">
+                <IconGamepad2 className="w-4 h-4" />
+              </div>
+              <span className="text-xs sm:text-sm font-extrabold tracking-tight text-white group-hover:text-[#F2A65A] transition-colors font-mono uppercase whitespace-nowrap">
+                {PORTFOLIO_DATA.header.name} / {PORTFOLIO_DATA.header.role}
+              </span>
+            </button>
+
+            <div className="flex items-center gap-1 sm:gap-2">
+              <nav className="flex items-center gap-1 bg-[#1b1e25] p-1 rounded-xl border border-white/6">
+                {tabs.map((tab) => {
+                  const isActive = currentTab === tab.id;
+                  return (
+                    <button
+                      key={tab.id}
+                      onClick={() => handleTab(tab.id)}
+                      className={`px-3 sm:px-3.5 py-1.5 rounded-lg text-xs font-mono transition-all duration-200 cursor-pointer whitespace-nowrap
+                        ${isActive
+                          ? 'bg-[#F2A65A] text-[#17191C] font-bold shadow-sm'
+                          : 'text-gray-400 hover:text-white hover:bg-white/5'
+                        }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </nav>
+
+              <button
+                onClick={onToggleSound}
+                title={soundEnabled ? 'Console Sound Enabled' : 'Console Sound Muted'}
+                className="p-2 rounded-xl bg-[#1b1e25] hover:bg-[#252830] text-gray-400 hover:text-white transition-colors cursor-pointer border border-white/6 ml-1"
+                aria-label="Toggle audio"
+              >
+                {soundEnabled ? (
+                  <IconVolume2 className="w-3.5 h-3.5 text-[#F2A65A]" />
+                ) : (
+                  <IconVolumeX className="w-3.5 h-3.5 text-gray-500" />
+                )}
+              </button>
+            </div>
+          </div>
+        </header>
+      );
+    };
+
+    // =========================================================================
+    // 6. CARTRIDGE COMPONENT (With Pure Blank Empty Groove)
+    // =========================================================================
+    const Cartridge = ({
+      project,
+      isInserted,
+      isInserting,
+      isDragging,
+      onDragStart,
+      onDragEnd,
+      onOpenDetails,
+      index
+    }) => {
+      const isDraggingRef = useRef(false);
+      const startPosRef = useRef(null);
+      const dragDistanceRef = useRef(0);
+
+      const accent = project.accentColor || '#F2A65A';
+      const code = project.cartridgeCode || `${project.title.substring(0, 3).toUpperCase()}-0${index + 1}`;
+
+      const handleMouseDown = (e) => {
+        startPosRef.current = { x: e.clientX, y: e.clientY };
+        dragDistanceRef.current = 0;
+      };
+
+      const handleMouseMove = (e) => {
+        if (startPosRef.current) {
+          dragDistanceRef.current = Math.hypot(e.clientX - startPosRef.current.x, e.clientY - startPosRef.current.y);
+        }
+      };
+
+      const handleDragStart = (e) => {
+        isDraggingRef.current = true;
+        soundManager.playCartridgeHover();
+        e.dataTransfer.setData('text/plain', project.id);
+        e.dataTransfer.setData('application/json', JSON.stringify({ projectId: project.id }));
+        e.dataTransfer.effectAllowed = 'copyMove';
+        window.__draggedCartridgeId = project.id;
+        setTimeout(() => {
+          onDragStart(project.id);
+        }, 0);
+      };
+
+      const handleDragEnd = () => {
+        window.__draggedCartridgeId = undefined;
+        isDraggingRef.current = false;
+        startPosRef.current = null;
+        dragDistanceRef.current = 0;
+        onDragEnd();
+      };
+
+      const handleClick = (e) => {
+        e.stopPropagation();
+        if (isDraggingRef.current || dragDistanceRef.current > 8) return;
+        if (isInserted || isInserting || isDragging) return;
+        soundManager.playClick();
+        onOpenDetails(project);
+      };
+
+      // EMPTY SLOT PLACEHOLDER: Purely blank subtle recessed groove when cartridge is out (NO text, NO buttons!)
+      if (isInserted || isInserting || isDragging) {
+        return (
+          <div 
+            draggable={isDragging}
+            onDragEnd={handleDragEnd}
+            className="w-36 sm:w-44 h-52 sm:h-56 rounded-xl bg-black/30 border border-white/5 select-none shadow-inner"
+          />
+        );
+      }
+
+      return (
+        <div
+          draggable={!isInserting}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          onClick={handleClick}
+          onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();handleClick(e);}}}
+          tabIndex={0}
+          role="button"
+          aria-label={`Cartridge: ${project.title}. Drag into dock to play, or click for details.`}
+          className={`group relative w-36 sm:w-44 h-52 sm:h-56 rounded-xl select-none cursor-grab active:cursor-grabbing transition-all duration-300 transform-gpu
+            hover:-translate-y-3.5 hover:shadow-[0_16px_36px_rgba(242,166,90,0.35)] hover:border-[#F2A65A]/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#F2A65A]
+            bg-gradient-to-b from-[#282b35] via-[#1c1f26] to-[#131518] border border-white/12 shadow-[0_12px_28px_rgba(0,0,0,0.75)]
+            ${isInserting ? 'opacity-50 scale-95 pointer-events-none' : ''}
+          `}
+        >
+          {/* 3D Top Bevel Highlight */}
+          <div className="absolute inset-x-0 top-0 h-[2px] bg-white/20 rounded-t-xl" />
+
+          {/* Top Gripper Ridges */}
+          <div className="absolute top-2 inset-x-3 h-3 flex items-center justify-between px-1.5 opacity-60">
+            <div className="w-1.5 h-1.5 rounded-full bg-black/60 shadow-inner" />
+            <div className="flex-1 mx-2 h-1 bg-black/40 rounded-full flex gap-1 justify-center items-center">
+              <div className="w-3.5 h-0.5 bg-white/20 rounded-full" />
+              <div className="w-3.5 h-0.5 bg-white/20 rounded-full" />
+              <div className="w-3.5 h-0.5 bg-white/20 rounded-full" />
+            </div>
+            <div className="w-1.5 h-1.5 rounded-full bg-black/60 shadow-inner" />
+          </div>
+
+          {/* Cartridge Cover Sticker Inset */}
+          <div className="absolute inset-x-2.5 top-7 bottom-6 rounded-lg bg-[#0e1013] border border-white/10 p-2.5 flex flex-col justify-between overflow-hidden shadow-inner">
+            <div className="flex items-center justify-between border-b border-white/10 pb-1.5 text-[9px] font-mono">
+              <span className="text-[#F2A65A] font-bold tracking-widest uppercase">
+                {code}
+              </span>
+              <span className="text-gray-400 font-medium">
+                64-BIT
+              </span>
+            </div>
+
+            <div className="relative my-auto flex flex-col items-center justify-center py-2 text-center">
+              <div 
+                className="w-12 h-12 rounded-full flex items-center justify-center mb-2 shadow-lg group-hover:scale-110 transition-transform duration-300"
+                style={{ 
+                  backgroundColor: `${accent}25`,
+                  border: `2px solid ${accent}`
+                }}
+              >
+                {project.coverImage ? <img src={project.coverImage} alt="" className="w-full h-full object-cover rounded-full" /> : <IconDisc className="w-6 h-6 animate-spin-slow" style={{ color: accent }} />}
+              </div>
+
+              <h3 className="font-extrabold text-sm sm:text-base text-white tracking-wider uppercase font-mono drop-shadow-md">
+                {project.title}
+              </h3>
+              <p className="text-[9px] sm:text-[10px] text-gray-400 font-mono mt-0.5 line-clamp-1">
+                {project.subtitle}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-between border-t border-white/10 pt-1 text-[8px] font-mono text-gray-400">
+              <span className="truncate max-w-[80px]">
+                {project.techTags[0] || 'UNITY'}
+              </span>
+              <span className="text-gray-400">DRAG ME ↓</span>
+            </div>
+          </div>
+
+          {/* Bottom Gold Contacts Strip (3D Edge) */}
+          <div className="absolute bottom-1 inset-x-4 h-2 rounded-sm bg-gradient-to-r from-amber-700 via-yellow-500 to-amber-700 opacity-70 flex justify-around items-center px-1">
+            <div className="w-1 h-full bg-black/40" />
+            <div className="w-1 h-full bg-black/40" />
+            <div className="w-1 h-full bg-black/40" />
+            <div className="w-1 h-full bg-black/40" />
+            <div className="w-1 h-full bg-black/40" />
+          </div>
+        </div>
+      );
+    };
+
+    // =========================================================================
+    // 7. CARTRIDGE SHOWCASE (Rack + Clean Hidden Controls when Empty)
+    // =========================================================================
+    const CartridgeShowcase = ({
+      projects,
+      activeProject,
+      bootingProject,
+      activeGameId,
+      draggedCartridgeId,
+      onDragStart,
+      onDragEnd,
+      onOpenTechDetails,
+      onMountAndLaunch
+    }) => {
+      return (
+        <div className="w-full max-w-4xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 justify-items-center p-6 sm:p-8 rounded-3xl bg-[#15171d] border border-white/8 shadow-xl">
+            {projects.map((proj, idx) => {
+              const isCurrentActive = activeGameId === proj.id;
+              const isCurrentBooting = bootingProject?.id === proj.id;
+              const isBeingDragged = draggedCartridgeId === proj.id;
+              const isOut = isCurrentActive || isBeingDragged;
+
+              return (
+                <div key={proj.id} className="flex flex-col items-center gap-3 w-full max-w-[200px]">
+                  <Cartridge
+                    project={proj}
+                    index={idx}
+                    isInserted={isCurrentActive}
+                    isInserting={isCurrentBooting}
+                    isDragging={isBeingDragged}
+                    onDragStart={onDragStart}
+                    onDragEnd={onDragEnd}
+                    onOpenDetails={onOpenTechDetails}
+                  />
+
+                  {/* Accessible Action Controls Below Each Cartridge - Completely hidden when cartridge is out */}
+                  <div className={`flex items-center gap-1.5 w-full transition-opacity duration-200 ${isOut ? 'invisible pointer-events-none select-none' : 'visible'}`}>
+                    <button
+                      onClick={() => {
+                        soundManager.playClick();
+                        onOpenTechDetails(proj);
+                      }}
+                      className="flex-1 py-1.5 px-2 rounded-xl bg-[#1e2129] hover:bg-[#282d38] text-gray-300 hover:text-white border border-white/8 text-xs font-mono font-bold transition-all cursor-pointer flex items-center justify-center gap-1 shadow-sm"
+                      title="View technical details"
+                    >
+                      <IconInfo className="w-3 h-3 text-[#F2A65A]" />
+                      <span>TECH</span>
+                    </button>
+
+                    <button
+                      onClick={() => onMountAndLaunch(proj)}
+                      disabled={isOut || proj.player?.mode === 'none' || (proj.player?.mode !== 'sample' && !proj.player?.url)}
+                      className="flex-1 py-1.5 px-2 rounded-xl text-xs font-mono font-bold transition-all flex items-center justify-center gap-1 shadow-sm border bg-[#252832] hover:bg-[#F2A65A] hover:text-[#17191C] text-gray-200 border-white/10 cursor-pointer"
+                      title="Insert into dock and play"
+                    >
+                      <IconPlay className="w-3 h-3 fill-current" />
+                      <span>{proj.player?.mode === 'none' || (proj.player?.mode !== 'sample' && !proj.player?.url) ? 'NO DEMO' : 'INSERT'}</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    };
+
+    // =========================================================================
+    // 8. COMPACT CONSOLE DOCK (Drop Target)
+    // =========================================================================
+    const CompactConsoleDock = ({
+      projects,
+      activeProject,
+      onMountAndLaunch,
+      onEject,
+      isBooting,
+      bootingProject
+    }) => {
+      const [isDragOver, setIsDragOver] = useState(false);
+
+      const handleDragOver = (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'copy';
+        if (!isDragOver) setIsDragOver(true);
+      };
+
+      const handleDragEnter = (e) => {
+        e.preventDefault();
+        setIsDragOver(true);
+      };
+
+      const handleDragLeave = (e) => {
+        e.preventDefault();
+        const rect = e.currentTarget.getBoundingClientRect();
+        if (e.clientX <= rect.left || e.clientX >= rect.right || e.clientY <= rect.top || e.clientY >= rect.bottom) {
+          setIsDragOver(false);
+        }
+      };
+
+      const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragOver(false);
+
+        let droppedId = e.dataTransfer.getData('text/plain');
+        if (!droppedId) {
+          try {
+            const json = JSON.parse(e.dataTransfer.getData('application/json'));
+            droppedId = json.projectId;
+          } catch {
+            droppedId = window.__draggedCartridgeId || '';
+          }
+        }
+
+        if (droppedId) {
+          const targetProj = projects.find(p => p.id === droppedId);
+          if (targetProj) {
+            onMountAndLaunch(targetProj);
+          }
+        }
+      };
+
+      const currentCartridge = bootingProject || activeProject;
+
+      return (
+        <div className="w-full max-w-xl mx-auto flex flex-col items-center mt-6 select-none">
+          {/* Floating Pill Tooltip */}
+          <div className="relative mb-3 flex items-center gap-2 px-4 py-1.5 rounded-full bg-[#20232b] border border-[#F2A65A]/40 text-xs font-mono text-gray-200 shadow-[0_4px_16px_rgba(242,166,90,0.15)] animate-bounce">
+            <span className="text-[#F2A65A]">💡</span>
+            <span>Drag cartridge here to play</span>
+          </div>
+
+          {/* Tactile Hardware Console Slot Dock */}
+          <div className="relative w-full rounded-3xl bg-gradient-to-b from-[#252830] via-[#1c1f26] to-[#131518] border-2 border-[#2f333f] shadow-[0_20px_50px_rgba(0,0,0,0.85)] p-5 sm:p-6 overflow-visible">
+            <div className="relative z-10 flex flex-col items-center">
+              <div
+                onDragOver={handleDragOver}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                className={`relative w-full h-24 rounded-2xl bg-[#090b0e] border-2 transition-all duration-200 p-2 flex items-center justify-center shadow-inner overflow-visible cursor-default
+                  ${isDragOver 
+                    ? 'border-[#F2A65A] bg-[#1a1710] shadow-[0_0_35px_rgba(242,166,90,0.7)] scale-102 ring-4 ring-[#F2A65A]/40' 
+                    : currentCartridge 
+                      ? 'border-[#F2A65A]/70 shadow-[0_0_20px_rgba(242,166,90,0.25)]' 
+                      : 'border-dashed border-[#F2A65A]/50 hover:border-[#F2A65A] shadow-[0_0_12px_rgba(242,166,90,0.15)]'
+                  }`}
+              >
+                <div className="absolute inset-x-6 top-2 h-1 bg-white/10 rounded-full" />
+
+                {/* Seated Cartridge Head */}
+                {currentCartridge ? (
+                  <div className="relative w-56 sm:w-64 h-22 -mt-4 rounded-t-xl bg-gradient-to-t from-[#1b1e26] to-[#2d323e] border-t-2 border-x-2 border-[#F2A65A] shadow-[0_-8px_20px_rgba(0,0,0,0.6)] px-4 py-2 flex flex-col justify-between select-none">
+                    <div className="flex items-center justify-between px-2 opacity-50">
+                      <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
+                      <div className="flex-1 mx-2 h-0.5 bg-white/20 rounded" />
+                      <div className="w-1.5 h-1.5 rounded-full bg-black/60" />
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 mt-1">
+                      <div className="flex items-center gap-2">
+                        <div 
+                          className="w-7 h-7 rounded-full flex items-center justify-center shadow-md shrink-0"
+                          style={{ 
+                            backgroundColor: `${currentCartridge.accentColor || '#F2A65A'}30`, 
+                            border: `1.5px solid ${currentCartridge.accentColor || '#F2A65A'}` 
+                          }}
+                        >
+                          <IconDisc className="w-4 h-4 animate-spin-slow" style={{ color: currentCartridge.accentColor || '#F2A65A' }} />
+                        </div>
+                        <div>
+                          <span className="text-xs font-mono font-extrabold text-white uppercase block leading-tight">
+                            {currentCartridge.title}
+                          </span>
+                          <span className="text-[10px] font-mono text-[#F2A65A] block">
+                            {isBooting ? 'BOOTING...' : 'ACTIVE IN DOCK'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={onEject}
+                        title="Eject cartridge back to shelf"
+                        className="p-1.5 rounded-lg bg-black/50 hover:bg-rose-500/20 text-gray-400 hover:text-rose-300 border border-white/10 transition-colors cursor-pointer"
+                      >
+                        <IconEject className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="w-full h-1 bg-[#0d0f12] rounded-full overflow-hidden mt-1">
+                      <div 
+                        className="h-full bg-[#F2A65A] transition-all duration-300"
+                        style={{ width: isBooting ? '60%' : '100%' }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center text-center pointer-events-none">
+                    <div className="flex items-center gap-2 text-xs font-mono font-bold tracking-wider text-[#F2A65A]">
+                      <span>⬇</span>
+                      <span>{isDragOver ? 'RELEASE TO INSERT' : 'DROP CARTRIDGE HERE'}</span>
+                      <span>⬇</span>
+                    </div>
+                    <span className="text-[10px] font-mono text-gray-500 mt-0.5">
+                      {isDragOver ? 'Snapping to 64-bit console bus...' : 'Insert any prototype from the shelf above'}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // =========================================================================
+    // 9. GAMEPLAY ARCADE MODAL (Popup Player with Offline srcDoc Support)
+    // =========================================================================
+    const GameplayArcadeModal = window.PortfolioUI.Player;
+    const ProjectDetailModal = window.PortfolioUI.Detail;
+
+    const AboutView = () => {
+      const { about, header } = PORTFOLIO_DATA;
+      return (
+        <div className="portfolio-content w-full max-w-3xl mx-auto py-8 sm:py-12 px-4 sm:px-6 space-y-10">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6 border-b border-white/10 pb-8">
+            <div className="relative w-28 h-28 sm:w-32 sm:h-32 rounded-full overflow-hidden bg-[#22252c] border-2 border-[#F2A65A]/40 shrink-0 shadow-xl flex items-center justify-center">
+              <img
+                src={about.avatar}
+                alt={header.name}
+                onError={(e) => { e.target.style.display = 'none'; }}
+                className="relative z-10 w-full h-full object-cover" key={about.avatar}
+              />
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-[#252830] to-[#17191d] text-[#F2A65A]">
+                <IconUser className="w-10 h-10" />
+                <span className="text-[10px] font-mono text-gray-400 mt-1 uppercase">Avatar</span>
+              </div>
+            </div>
+
+            <div className="space-y-3 text-center sm:text-left flex-1">
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                  {header.name}
+                </h1>
+                <p className="text-xs font-mono text-[#F2A65A] uppercase tracking-wider mt-0.5">
+                  {header.role}
+                </p>
+              </div>
+
+              <div className="space-y-2 text-xs sm:text-sm text-gray-300 leading-relaxed font-sans">
+                {about.bio.map((paragraph, idx) => (
+                  <p key={idx}>{paragraph}</p>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <h2 className="text-xs font-mono uppercase text-gray-400 tracking-wider flex items-center gap-2 font-bold">
+              <IconCode2 className="w-4 h-4 text-[#F2A65A]" />
+              <span>Core Skills &amp; Tools</span>
+            </h2>
+
+            <div className="flex flex-wrap gap-2.5">
+              {about.skills.map((skill, idx) => (
+                <span
+                  key={idx}
+                  className="px-3.5 py-1.5 rounded-lg bg-[#1c1f26] border border-white/8 text-xs font-mono text-gray-200 hover:border-[#F2A65A]/40 transition-colors"
+                >
+                  {skill}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // =========================================================================
+    // 12. RESUME VIEW
+    // =========================================================================
+    const ResumeView = () => {
+      const { resume } = PORTFOLIO_DATA;
+
+      const handleDownloadPdf = () => {
+        soundManager.playClick();
+        if (resume.downloadPdfUrl && resume.downloadPdfUrl !== '/resume.pdf') {
+          const a=document.createElement('a'); a.href=resume.downloadPdfUrl; a.download='Steven-Resume.pdf'; a.target='_blank'; a.rel='noopener'; a.click();
+        } else {
+          window.print();
+        }
+      };
+
+      return (
+        <div className="portfolio-content w-full max-w-3xl mx-auto py-8 sm:py-12 px-4 sm:px-6 space-y-10">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between pb-6 border-b border-white/10 gap-4">
+            <div>
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                Resume
+              </h1>
+              <p className="text-xs text-gray-400 font-mono mt-0.5">
+                Experience &amp; Education
+              </p>
+            </div>
+
+            <button
+              onClick={handleDownloadPdf}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#F2A65A] text-[#17191C] font-mono text-xs font-bold uppercase tracking-wider hover:bg-[#f5b370] transition-transform hover:scale-105 active:scale-95 shadow-md cursor-pointer"
+            >
+              <IconDownload className="w-3.5 h-3.5" />
+              <span>Download PDF</span>
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            <h2 className="text-xs font-mono uppercase text-gray-400 tracking-wider flex items-center gap-2 font-bold">
+              <IconBriefcase className="w-3.5 h-3.5 text-[#F2A65A]" />
+              <span>Experience</span>
+            </h2>
+
+            <div className="space-y-4">
+              {resume.experiences.map((exp, idx) => (
+                <div
+                  key={idx}
+                  className="p-5 rounded-2xl bg-[#1c1f26] border border-white/8 space-y-2.5 hover:border-white/15 transition-colors"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-1.5 border-b border-white/5">
+                    <div>
+                      <h3 className="text-sm font-bold text-white">
+                        {exp.role}
+                      </h3>
+                      <p className="text-xs font-mono text-[#F2A65A] mt-0.5">
+                        {exp.company}
+                      </p>
+                    </div>
+
+                    <span className="text-xs font-mono text-gray-400 bg-white/5 px-2.5 py-0.5 rounded self-start sm:self-center">
+                      {exp.period}
+                    </span>
+                  </div>
+
+                  <ul className="space-y-1.5 text-xs text-gray-300 leading-relaxed pt-0.5">
+                    {exp.highlights.map((bullet, bIdx) => (
+                      <li key={bIdx} className="flex items-start gap-2">
+                        <span className="text-[#F2A65A] font-bold text-xs mt-0.5">•</span>
+                        <span>{bullet}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {resume.education && resume.education.length > 0 && (
+            <div className="space-y-4">
+              <h2 className="text-xs font-mono uppercase text-gray-400 tracking-wider flex items-center gap-2 font-bold">
+                <IconGraduationCap className="w-3.5 h-3.5 text-[#F2A65A]" />
+                <span>Education</span>
+              </h2>
+
+              <div className="space-y-3">
+                {resume.education.map((edu, idx) => (
+                  <div
+                    key={idx}
+                    className="p-5 rounded-2xl bg-[#1c1f26] border border-white/8 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                  >
+                    <div>
+                      <h3 className="text-sm font-bold text-white">
+                        {edu.degree}
+                      </h3>
+                      <p className="text-xs font-mono text-gray-400 mt-0.5">
+                        {edu.school}
+                      </p>
+                    </div>
+
+                    <span className="text-xs font-mono text-gray-400 bg-white/5 px-2.5 py-0.5 rounded self-start sm:self-center">
+                      {edu.period}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // =========================================================================
+    // 13. CONTACT VIEW
+    // =========================================================================
+    const ContactView = () => {
+      const { contact } = PORTFOLIO_DATA;
+      const [copied, setCopied] = useState(false);
+      const [isSubmitting, setIsSubmitting] = useState(false);
+      const [submitted, setSubmitted] = useState(false);
+      const [formData, setFormData] = useState({ name: '', email: '', message: '' });
+
+      const handleCopyEmail = () => {
+        soundManager.playClick();
+        navigator.clipboard.writeText(contact.email);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2500);
+      };
+
+      const handleSubmit = (e) => {
+        e.preventDefault();
+        soundManager.playClick();
+        window.location.href = 'mailto:' + encodeURIComponent(contact.email) + '?subject=' + encodeURIComponent('Portfolio inquiry from ' + formData.name) + '&body=' + encodeURIComponent('From: ' + formData.name + '\nEmail: ' + formData.email + '\n\n' + formData.message);
+      };
+
+      const getIcon = (iconName) => {
+        switch (iconName.toLowerCase()) {
+          case 'github': return <IconGithub className="w-5 h-5 text-gray-200" />;
+          case 'linkedin': return <IconLinkedin className="w-5 h-5 text-sky-400" />;
+          case 'itch':
+          case 'itch.io': return <IconGamepad2 className="w-5 h-5 text-rose-400" />;
+          default: return <IconExternalLink className="w-5 h-5 text-[#F2A65A]" />;
+        }
+      };
+
+      return (
+        <div className="portfolio-content w-full max-w-3xl mx-auto py-8 sm:py-12 px-4 sm:px-6 space-y-10">
+          <div className="pb-6 border-b border-white/10 space-y-1">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              Contact
+            </h1>
+            <p className="text-xs text-gray-400 font-mono">
+              Get in touch for gameplay opportunities and project collaboration.
+            </p>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between p-5 rounded-2xl bg-[#1c1f26] border border-white/8 gap-4">
+            <div className="flex items-center gap-3 text-center sm:text-left">
+              <div className="w-10 h-10 rounded-xl bg-[#F2A65A]/20 border border-[#F2A65A]/40 flex items-center justify-center shrink-0">
+                <IconMail className="w-5 h-5 text-[#F2A65A]" />
+              </div>
+              <div>
+                <span className="text-[10px] font-mono text-gray-400 uppercase block">DIRECT EMAIL</span>
+                <span className="text-sm font-bold text-white font-mono">{contact.email}</span>
+              </div>
+            </div>
+
+            <button
+              onClick={handleCopyEmail}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#252830] hover:bg-[#2e3340] text-xs font-mono text-gray-200 transition-colors cursor-pointer border border-white/8"
+            >
+              {copied ? (
+                <>
+                  <IconCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-emerald-400">Copied!</span>
+                </>
+              ) : (
+                <>
+                  <IconCopy className="w-3.5 h-3.5 text-gray-400" />
+                  <span>Copy Email</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          <div className="p-6 sm:p-8 rounded-2xl bg-[#1c1f26] border border-white/8 space-y-5">
+            <h2 className="text-sm font-bold text-white">
+              Send a Transmission
+            </h2>
+
+            {submitted ? (
+              <div className="p-6 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-center space-y-2">
+                <div className="w-10 h-10 rounded-full bg-emerald-500/20 text-emerald-400 mx-auto flex items-center justify-center">
+                  <IconCheck className="w-5 h-5" />
+                </div>
+                <h3 className="text-sm font-bold text-emerald-300">Message Transmitted</h3>
+                <p className="text-xs text-gray-400">Thank you! Your message has been sent to Steven.</p>
+                <button
+                  onClick={() => { setSubmitted(false); setFormData({ name: '', email: '', message: '' }); }}
+                  className="mt-3 text-xs font-mono text-[#F2A65A] hover:underline cursor-pointer"
+                >
+                  Send another message
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <p className="text-xs text-gray-400">Opens your email app. Please review and send your message there.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-mono text-gray-400 mb-1">Your Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.name}
+                      onChange={e => setFormData({ ...formData, name: e.target.value })}
+                      placeholder="e.g. Alex Chen"
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#14161a] border border-white/8 text-xs text-white focus:outline-none focus:border-[#F2A65A]/80 font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-mono text-gray-400 mb-1">Your Email</label>
+                    <input
+                      type="email"
+                      required
+                      value={formData.email}
+                      onChange={e => setFormData({ ...formData, email: e.target.value })}
+                      placeholder="alex@studio.com"
+                      className="w-full px-3.5 py-2 rounded-xl bg-[#14161a] border border-white/8 text-xs text-white focus:outline-none focus:border-[#F2A65A]/80 font-mono"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-mono text-gray-400 mb-1">Message</label>
+                  <textarea
+                    required
+                    rows="4"
+                    value={formData.message}
+                    onChange={e => setFormData({ ...formData, message: e.target.value })}
+                    placeholder="Tell me about your gameplay engineering role, team, or project..."
+                    className="w-full px-3.5 py-2 rounded-xl bg-[#14161a] border border-white/8 text-xs text-white focus:outline-none focus:border-[#F2A65A]/80 font-mono resize-none"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-[#F2A65A] text-[#17191C] font-mono text-xs font-bold uppercase tracking-wider hover:bg-[#f5b370] transition-colors cursor-pointer shadow-md"
+                >
+                  Open Email App
+                </button>
+              </form>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <h2 className="text-xs font-mono uppercase text-gray-400 tracking-wider font-bold">
+              Profiles &amp; Repositories
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {contact.links.map((link, idx) => (
+                <a
+                  key={idx}
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 p-3.5 rounded-xl bg-[#1c1f26] hover:bg-[#252830] border border-white/8 hover:border-[#F2A65A]/40 transition-colors group cursor-pointer"
+                >
+                  <div className="w-8 h-8 rounded-lg bg-black/40 flex items-center justify-center">
+                    {getIcon(link.icon)}
+                  </div>
+                  <div>
+                    <span className="text-xs font-mono font-bold text-white group-hover:text-[#F2A65A] transition-colors block">
+                      {link.label}
+                    </span>
+                    <span className="text-[10px] font-mono text-gray-500">Visit profile</span>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // =========================================================================
+    // 14. ROOT APP COMPONENT
+    // =========================================================================
+    const App = () => {
+      const [currentTab, setCurrentTab] = useState('games');
+      const [, refreshProfile] = useState(0);
+      React.useEffect(() => {
+        const handle = e => {
+          if (e.origin !== location.origin || e.source !== window.parent || window.parent === window || e.data.type !== 'portfolio-update') return;
+          const playingFrame=document.querySelector('.arcade-screen iframe');
+          playingFrame?.contentWindow?.postMessage({type:'unity-quit'},location.origin);
+          clearTimeout(bootTimer.current);
+          setActiveProject(null);setBootingProject(null);setIsBooting(false);setIsArcadeOpen(false);
+          applyProfile(e.data.config);
+          if (['games','about','resume','contact'].includes(e.data.tab)) setCurrentTab(e.data.tab);
+          if(e.data.projectId) setTechDetailProject(PORTFOLIO_DATA.games.find(p=>p.id===e.data.projectId)||null);
+          else if(e.data.tab==='games') setTechDetailProject(null);
+          refreshProfile(n => n+1);
+        };
+        window.addEventListener('message',handle);
+        if(window.parent !== window) window.parent.postMessage({type:'portfolio-ready',original:ORIGINAL_PROFILE},location.origin);
+        return () => window.removeEventListener('message',handle);
+      }, []);
+      const [activeProject, setActiveProject] = useState(null);
+      const [bootingProject, setBootingProject] = useState(null);
+      const [draggedCartridgeId, setDraggedCartridgeId] = useState(null);
+      const [isBooting, setIsBooting] = useState(false);
+      const [isArcadeOpen, setIsArcadeOpen] = useState(false);
+      const [techDetailProject, setTechDetailProject] = useState(null);
+      const [soundEnabled, setSoundEnabled] = useState(true);
+      const bootTimer=useRef(null);
+      useEffect(()=>()=>clearTimeout(bootTimer.current),[]);
+
+      const handleToggleSound = () => {
+        const newState = soundManager.toggleSound();
+        setSoundEnabled(newState);
+      };
+
+      const handleMountAndLaunch = (project) => {
+        if (isBooting) return;
+        if(project.player?.mode==='none'||(project.player?.mode!=='sample'&&!project.player?.url)){setTechDetailProject(project);return;}
+        if (activeProject?.id === project.id && isArcadeOpen) return;
+
+        soundManager.playCartridgeInsert();
+        setBootingProject(project);
+        setIsBooting(true);
+        setDraggedCartridgeId(null);
+
+        bootTimer.current=setTimeout(() => {
+          soundManager.playConsoleBoot();
+          setActiveProject(project);
+          setBootingProject(null);
+          setIsBooting(false);
+          setIsArcadeOpen(true);
+        }, 1200);
+      };
+
+      const handleEject = () => {
+        clearTimeout(bootTimer.current);
+        soundManager.playEject();
+        setActiveProject(null);
+        setBootingProject(null);
+        setDraggedCartridgeId(null);
+        setIsBooting(false);
+        setIsArcadeOpen(false);
+      };
+
+      const activeGameId = activeProject?.id || bootingProject?.id || null;
+
+      return (
+        <div className="min-h-screen bg-[#17191C] text-[#E5E7EB] flex flex-col font-sans selection:bg-[#F2A65A]/25 selection:text-[#F2A65A]">
+          <Navbar
+            currentTab={currentTab}
+            onTabChange={setCurrentTab}
+            soundEnabled={soundEnabled}
+            onToggleSound={handleToggleSound}
+          />
+
+          <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 flex flex-col items-center">
+            {currentTab === 'games' && (
+              <div className="w-full flex flex-col items-center space-y-8">
+                <div className="text-center">
+                  <h1 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight">
+                    {PORTFOLIO_DATA.hero.title}
+                  </h1>
+                </div>
+
+                <CartridgeShowcase
+                  projects={PORTFOLIO_DATA.games.filter(p=>!p.hidden)}
+                  activeProject={activeProject}
+                  bootingProject={bootingProject}
+                  activeGameId={activeGameId}
+                  draggedCartridgeId={draggedCartridgeId}
+                  onDragStart={setDraggedCartridgeId}
+                  onDragEnd={() => setDraggedCartridgeId(null)}
+                  onOpenTechDetails={setTechDetailProject}
+                  onMountAndLaunch={handleMountAndLaunch}
+                />
+
+                <CompactConsoleDock
+                  projects={PORTFOLIO_DATA.games.filter(p=>!p.hidden)}
+                  activeProject={activeProject}
+                  bootingProject={bootingProject}
+                  isBooting={isBooting}
+                  onMountAndLaunch={handleMountAndLaunch}
+                  onEject={handleEject}
+                />
+              </div>
+            )}
+
+            {currentTab === 'about' && <AboutView />}
+            {currentTab === 'resume' && <ResumeView />}
+            {currentTab === 'contact' && <ContactView />}
+          </main>
+
+          <GameplayArcadeModal
+            project={activeProject}
+            isOpen={isArcadeOpen}
+            onCloseAndEject={handleEject}
+          />
+
+          <ProjectDetailModal
+            project={techDetailProject}
+            onClose={() => setTechDetailProject(null)}
+            onPlayDemo={(p) => {
+              setTechDetailProject(null);
+              setCurrentTab('games');
+              handleMountAndLaunch(p);
+            }}
+          />
+        </div>
+      );
+    };
+
+    // Mount to DOM root
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>

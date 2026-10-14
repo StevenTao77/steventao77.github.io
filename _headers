@@ -1,0 +1,43 @@
+/portfolio-config.js
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+
+/games/import-e3264687-cdfe-4b99-a712-95bb7227da92/Build/Reverse-Engine-web.data
+  Content-Type: application/octet-stream
+
+/games/import-e3264687-cdfe-4b99-a712-95bb7227da92/Build/Reverse-Engine-web.framework.js
+  Content-Type: application/javascript; charset=utf-8
+
+/games/import-e3264687-cdfe-4b99-a712-95bb7227da92/Build/Reverse-Engine-web.loader.js
+  Content-Type: application/javascript; charset=utf-8
+
+/games/import-e3264687-cdfe-4b99-a712-95bb7227da92/Build/Reverse-Engine-web.wasm
+  Content-Type: application/wasm
+
+/portfolio-bridge.js
+  Content-Type: application/javascript; charset=utf-8
+
+/portfolio-config.js
+  Content-Type: application/javascript; charset=utf-8
+
+/portfolio-model.js
+  Content-Type: application/javascript; charset=utf-8
+
+/project-runtime.js
+  Content-Type: application/javascript; charset=utf-8
+
+/unity-bridge.js
+  Content-Type: application/javascript; charset=utf-8
+
+/vendor/babel.min.js
+  Content-Type: application/javascript; charset=utf-8
+
+/vendor/react-dom.production.min.js
+  Content-Type: application/javascript; charset=utf-8
+
+/vendor/react.production.min.js
+  Content-Type: application/javascript; charset=utf-8
+
+/vendor/tailwind.js
+  Content-Type: application/javascript; charset=utf-8
