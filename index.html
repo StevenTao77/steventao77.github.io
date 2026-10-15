@@ -878,6 +878,15 @@
       };
 
       const handleDragStart = (e) => {
+        e.stopPropagation();
+        // Always snapshot the cartridge, even when the pointer starts over its artwork.
+        const cartridge = e.currentTarget;
+        const bounds = cartridge.getBoundingClientRect();
+        e.dataTransfer.setDragImage(
+          cartridge,
+          Math.max(0, Math.min(bounds.width, e.clientX - bounds.left)),
+          Math.max(0, Math.min(bounds.height, e.clientY - bounds.top))
+        );
         isDraggingRef.current = true;
         soundManager.playCartridgeHover();
         e.dataTransfer.setData('text/plain', project.id);
@@ -967,7 +976,7 @@
                   border: `2px solid ${accent}`
                 }}
               >
-                {project.coverImage ? <img src={project.coverImage} alt="" className="w-full h-full object-cover rounded-full" /> : <IconDisc className="w-6 h-6 animate-spin-slow" style={{ color: accent }} />}
+                {project.coverImage ? <img src={project.coverImage} alt="" draggable={false} className="w-full h-full object-cover rounded-full pointer-events-none" /> : <IconDisc className="w-6 h-6 animate-spin-slow" style={{ color: accent }} />}
               </div>
 
               <h3 className="font-extrabold text-sm sm:text-base text-white tracking-wider uppercase font-mono drop-shadow-md">
