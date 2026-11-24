@@ -3,17 +3,62 @@
 /index.html
   Cache-Control: no-cache
 
-/games/import-e3264687-cdfe-4b99-a712-95bb7227da92/Build/Reverse-Engine-web.data
+/games/bunny-breakout/Build/BunnyBreakout-Web.data
   Content-Type: application/octet-stream
 
-/games/import-e3264687-cdfe-4b99-a712-95bb7227da92/Build/Reverse-Engine-web.framework.js
+/games/bunny-breakout/Build/BunnyBreakout-Web.framework.js
   Content-Type: application/javascript; charset=utf-8
 
-/games/import-e3264687-cdfe-4b99-a712-95bb7227da92/Build/Reverse-Engine-web.loader.js
+/games/bunny-breakout/Build/BunnyBreakout-Web.loader.js
   Content-Type: application/javascript; charset=utf-8
 
-/games/import-e3264687-cdfe-4b99-a712-95bb7227da92/Build/Reverse-Engine-web.wasm
+/games/bunny-breakout/Build/BunnyBreakout-Web.wasm
   Content-Type: application/wasm
+
+/games/faded-memories/Build/FadedMemories-Web.data.unityweb
+  Content-Type: application/octet-stream
+
+/games/faded-memories/Build/FadedMemories-Web.framework.js.unityweb
+  Content-Type: application/octet-stream
+
+/games/faded-memories/Build/FadedMemories-Web.loader.js
+  Content-Type: application/javascript; charset=utf-8
+
+/games/faded-memories/Build/FadedMemories-Web.wasm.unityweb
+  Content-Type: application/octet-stream
+
+/games/faded-memories/StreamingAssets/Videos/Accident.mp4
+  Content-Type: video/mp4
+
+/games/faded-memories/StreamingAssets/Videos/Ending Accept Death.mp4
+  Content-Type: video/mp4
+
+/games/faded-memories/StreamingAssets/Videos/End_Live_Audio_ver2.mp4
+  Content-Type: video/mp4
+
+/games/faded-memories/StreamingAssets/Videos/first_meating_audio_ver4.mp4
+  Content-Type: video/mp4
+
+/games/faded-memories/StreamingAssets/Videos/Intro_animation.mp4
+  Content-Type: video/mp4
+
+/games/faded-memories/StreamingAssets/Videos/memory-buildig_home_audio_ver3.mp4
+  Content-Type: video/mp4
+
+/games/faded-memories/StreamingAssets/Videos/memory-wedding_audio_ver3.mp4
+  Content-Type: video/mp4
+
+/games/import-ad78ed11-1fb6-49c0-a35e-56049959adc3/Build/frogjump-web-br.data.unityweb
+  Content-Type: application/octet-stream
+
+/games/import-ad78ed11-1fb6-49c0-a35e-56049959adc3/Build/frogjump-web-br.framework.js.unityweb
+  Content-Type: application/octet-stream
+
+/games/import-ad78ed11-1fb6-49c0-a35e-56049959adc3/Build/frogjump-web-br.loader.js
+  Content-Type: application/javascript; charset=utf-8
+
+/games/import-ad78ed11-1fb6-49c0-a35e-56049959adc3/Build/frogjump-web-br.wasm.unityweb
+  Content-Type: application/octet-stream
 
 /portfolio-bridge.js
   Content-Type: application/javascript; charset=utf-8

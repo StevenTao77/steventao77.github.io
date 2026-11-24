@@ -2,7 +2,7 @@
 (() => {
   const clone = value => JSON.parse(JSON.stringify(value));
   const uid = () => 'p-' + (globalThis.crypto?.randomUUID?.() || Date.now().toString(36)+Math.random().toString(36).slice(2));
-  const defaults = {accent:'#f2a65a',background:'#17191c',fontSize:14,lineHeight:1.7,width:768,spacing:40,align:'left'};
+  const defaults = {accent:'#ff5a1f',background:'#ecebe6',fontSize:16,lineHeight:1.6,width:760,spacing:40,align:'left'};
   const layout = {width:960,padding:28,gap:24,background:'#17191c',color:'#e5e7eb',fontSize:16,fontFamily:'sans',mobileStack:true};
   const blockNames = {heading:'标题',text:'正文',image:'图片',gallery:'图集',video:'视频',split:'图文组合',info:'项目信息',code:'技术 / 代码',button:'按钮',divider:'分隔线',spacer:'留白'};
   function block(type='text') {return {id:uid(),type,hidden:false,title:type==='heading'?'新标题':'',text:type==='text'?'在这里介绍你的项目。':'',src:'',caption:'',alt:'',poster:'',items:[],url:'',label:'了解更多',action:'link',level:2,fontSize:type==='heading'?28:16,color:'#e5e7eb',align:'left',lineHeight:1.7,radius:12,ratio:'16 / 9',fit:'cover',columns:3,reverse:false,imageWidth:50,padding:0,space:24,background:'transparent',videoMode:'file',autoplay:false,loop:false};}
